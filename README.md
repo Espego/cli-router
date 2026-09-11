@@ -6,7 +6,7 @@ Everything else — the accepted-option list, the usage text, the unknown-option
 `$command === null` / `fwrite(STDERR, …)` / `exit(1)` chain — is generated from the signature, so
 it cannot drift from the code it describes.
 
-One dependency: PHP 8.4.
+Two requirements: PHP 8.4 and `ext-mbstring`, which the help renderer counts characters with.
 
 ---
 
@@ -97,7 +97,19 @@ describing a flag that does not exist.
 Types come from the signature. `string` is required unless it has a default, `bool` is a flag that
 refuses a value, `?DateTimeImmutable` parses, and a backed enum validates itself and prints its own
 `Allowed:` list. The attribute carries only what a type genuinely cannot say: the description, a
-`pattern`, a `min`/`max`, and the `separator` a list splits on.
+`pattern` (which must be a `/u` one — arguments arrive as UTF-8), a `min`/`max` for a number, a
+`minCount`/`maxCount` for how many elements a list or a variadic may carry, and the `separator` a
+list splits on. A bound the type cannot honour is refused rather than ignored: `min` on a `string`,
+`minCount` on a scalar, a default outside its own range.
+
+## What the parser does with argv
+
+- `--key=value` and a bare `--flag`. No short options, no `--opt value`.
+- **A repeated option is an error, never resolved.** Keeping the last occurrence let a malformed
+  `--confirm=false` be rescued by a later bare `--confirm` and the write go ahead, so every
+  repeated name is named back: `--what, --confirm were given more than once`.
+- **`--` ends option parsing.** Everything after it is positional whatever it looks like, which is
+  the only way to pass a path beginning with `--`.
 
 ## What a command returns
 
@@ -139,6 +151,21 @@ Help, an unknown command, an unknown option and every type, pattern or range fai
 *before* any middleware runs and before a command body exists. A mistyped flag costs an error
 message and nothing else, whatever the command would have gone on to do.
 
+## What it refuses
+
+A declaration that cannot work is refused at introspection, naming the symbol at fault, because the
+alternative is help text that lies or a limit that reads as enforced and is not. On top of the
+unsupported types — a union, a bare `array`, an unknown class, a mutable `DateTime` — it refuses a
+`#[Command]` that is private, static, oddly named or does not return `CommandResult`; a parameter
+carrying both `#[Arg]` and `#[Opt]`; a positional `bool`, which could never be supplied; a
+`ValueList` whose `elementType()` is not one the coercer can produce; a constraint that could never
+apply, or contradicts itself, or that the declared default already violates; and a `#[CatchAs]`
+whose exit code is outside 1-255, whose format is not one `%s`, or that names something the runner
+has already handled.
+
+The refusals are the point of the package rather than a safety net around it, so they carry a test
+each: `tests/unit/DeclarationTest.phpt`.
+
 ## Things it deliberately does not do
 
 - **No dependency injection.** A router that resolves collaborators is a container with extra steps.
@@ -151,12 +178,19 @@ message and nothing else, whatever the command would have gone on to do.
 
 ## Development
 
-The dev dependencies are `nette/tester`, `phpstan/phpstan` and `symplify/easy-coding-standard`, all pinned to exact versions in
-`composer.json`. There is no lockfile yet, so the first run has to resolve them; after that:
+The dev dependencies are `nette/tester`, `phpstan/phpstan` and `symplify/easy-coding-standard`, all
+pinned to exact versions in `composer.json` and resolved in the committed `composer.lock`, so
+`composer install` is reproducible and never resolves anything fresh.
+
+Make is the interface; the composer scripts underneath it stay usable on their own.
 
 ```
-composer tester          # tests
-composer phpstan         # level max, over src/
-composer ecs             # coding standard, check only
-composer ecs-fix         # coding standard, apply
+make test                # nette/tester, over tests/unit
+make lint                # PHPStan, level max, over src/ and tests/fixtures
+make ecs                 # coding standard, check only
+make ecs-fix             # coding standard, apply
+make deps-audit          # composer audit
+make check               # everything above except the fixer
+make on-commit           # the commit gate: check
+make on-push             # the push gate: check, plus composer validate --strict
 ```
