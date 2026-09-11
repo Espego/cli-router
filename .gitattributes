@@ -2,5 +2,6 @@
 # analyser config are for developing this package, not for sitting in someone's vendor/.
 /tests               export-ignore
 /phpstan.neon        export-ignore
+/ecs.php             export-ignore
 /.gitattributes      export-ignore
 /.gitignore          export-ignore

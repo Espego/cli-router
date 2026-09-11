@@ -8,7 +8,8 @@
 	},
 	"require-dev": {
 		"nette/tester": "v2.6.1",
-		"phpstan/phpstan": "2.1.42"
+		"phpstan/phpstan": "2.1.42",
+		"symplify/easy-coding-standard": "13.1.5"
 	},
 	"autoload": {
 		"psr-4": {
@@ -27,6 +28,8 @@
 		"sort-packages": true
 	},
 	"scripts": {
+		"ecs": "ecs check",
+		"ecs-fix": "ecs check --fix",
 		"phpstan": "phpstan analyse --memory-limit=512M",
 		"tester": "tester -C tests/unit -s"
 	},
