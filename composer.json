@@ -1,0 +1,34 @@
+{
+	"name": "espego/cli-router",
+	"description": "Declarative, reflection-driven CLI command sets. A command is a method; its signature is its options.",
+	"type": "library",
+	"license": "proprietary",
+	"require": {
+		"php": "^8.4"
+	},
+	"require-dev": {
+		"nette/tester": "v2.6.1",
+		"phpstan/phpstan": "2.1.42"
+	},
+	"autoload": {
+		"psr-4": {
+			"Espego\\CliRouter\\": "src"
+		}
+	},
+	"autoload-dev": {
+		"psr-4": {
+			"Espego\\CliRouter\\Tests\\": "tests/fixtures"
+		}
+	},
+	"config": {
+		"allow-plugins": {},
+		"preferred-install": "dist",
+		"source-fallback": false,
+		"sort-packages": true
+	},
+	"scripts": {
+		"phpstan": "phpstan analyse --memory-limit=512M",
+		"tester": "tester -C tests/unit -s"
+	},
+	"minimum-stability": "stable"
+}
