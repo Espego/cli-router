@@ -50,9 +50,10 @@ abstract class Commands
      */
     final public function handle(array $argv, ?Output $output = null): int
     {
-        $this->output = $output ?? new StreamOutput();
-
-        return (new Runner($this))->handle($argv, $this->output);
+        // Deliberately not stored on the set: help, an empty invocation and a usage error never
+        // reach dispatch, so a set that kept it here answered output() with a buffer from a call
+        // that had already finished — and a later direct call wrote into it.
+        return (new Runner($this))->handle($argv, $output ?? new StreamOutput());
     }
 
     /**

@@ -206,10 +206,12 @@ final class Coercer
     /** @param class-string<ValueList> $list */
     private function list(ValueSpec $spec, string $list, string $value): ValueList
     {
-        // Stray separators and surrounding whitespace are dropped rather than becoming empty
-        // elements — `--ids=1, ,2` means two ids, not three.
+        // Stray separators are dropped rather than becoming empty elements — `--ids=1, ,2` means
+        // two ids, not three. Surrounding whitespace goes the same way as it does for a scalar,
+        // which is what `trim: false` asks about: an element is a value like any other.
+        $split = explode($spec->meta->separator, $value);
         $parts = array_values(array_filter(
-            array_map('trim', explode($spec->meta->separator, $value)),
+            $spec->meta->trim ? array_map('trim', $split) : $split,
             static fn (string $p): bool => $p !== '',
         ));
 
@@ -350,7 +352,7 @@ final class Coercer
 
     private function assertPattern(ValueSpec $spec, string $value): void
     {
-        if ($spec->meta->pattern === null || preg_match($spec->meta->pattern, $value) === 1) {
+        if (Constraints::matchesPattern($spec->meta->pattern, $value)) {
             return;
         }
 
@@ -362,10 +364,10 @@ final class Coercer
         if ($spec->meta instanceof Arg && $spec->meta->required && $count === 0) {
             throw new UsageError("at least one <{$spec->placeholder()}> is required");
         }
-        if ($spec->meta->minCount !== null && $count < $spec->meta->minCount) {
+        if (! Constraints::atLeast($count, $spec->meta->minCount)) {
             throw new UsageError("at least {$spec->meta->minCount} <{$spec->placeholder()}> are required");
         }
-        if ($spec->meta->maxCount !== null && $count > $spec->meta->maxCount) {
+        if (! Constraints::atMost($count, $spec->meta->maxCount)) {
             throw new UsageError("at most {$spec->meta->maxCount} <{$spec->placeholder()}> are accepted");
         }
     }
@@ -373,10 +375,10 @@ final class Coercer
     /** Numeric bounds, shared by int and float so neither can quietly ignore a declared limit. */
     private function assertBounds(ValueSpec $spec, int|float $number, string $value): void
     {
-        if ($spec->meta->min !== null && $number < $spec->meta->min) {
+        if (! Constraints::atLeast($number, $spec->meta->min)) {
             $this->reject($spec, 'must be at least ' . $spec->meta->min, $value);
         }
-        if ($spec->meta->max !== null && $number > $spec->meta->max) {
+        if (! Constraints::atMost($number, $spec->meta->max)) {
             $this->reject($spec, 'must be at most ' . $spec->meta->max, $value);
         }
     }

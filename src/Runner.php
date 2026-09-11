@@ -193,29 +193,40 @@ final class Runner
      */
     private function helpTopic(SetInfo $set, array $args, array $opts): string|null|false
     {
-        $asked = isset($opts['help']);
-
         if (! $set->meta->single && ($args[0] ?? null) === 'help') {
             $topic = $args[1] ?? null;
             if ($topic !== null && ! $set->has($topic)) {
                 throw new UsageError("unknown command '{$topic}'. Accepted: " . implode(', ', $set->names()) . '.');
             }
+            if (count($args) > 2) {
+                throw new UsageError('help describes one command. Run: help ' . ($topic ?? '<command>'));
+            }
 
             return $topic;
         }
 
-        if (! $asked) {
+        if (! array_key_exists('help', $opts)) {
             return false;
+        }
+
+        // Built-in help is a flag like any other, and `--help=false` reads as "do not show help" to
+        // everyone who types it. Printing help and exiting 0 for it is the same class of defect as
+        // `--confirm=false` writing: an answer nobody asked for, reported as success.
+        if ($opts['help'] !== true) {
+            throw new UsageError('--help is a flag and takes no value');
         }
 
         // `<command> --help` describes that command, and is answered before validation so it works
         // without the options the command would otherwise require.
         $named = $args[0] ?? null;
-        if (! $set->meta->single && $named !== null && $set->has($named)) {
-            return $named;
+        if ($set->meta->single || $named === null) {
+            return null;
+        }
+        if (! $set->has($named)) {
+            throw new UsageError("unknown command '{$named}'. Accepted: " . implode(', ', $set->names()) . '.');
         }
 
-        return null;
+        return $named;
     }
 
     private function empty(SetInfo $set, Output $output, string $program): int

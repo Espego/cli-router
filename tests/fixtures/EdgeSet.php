@@ -10,6 +10,7 @@ use Espego\CliRouter\Command;
 use Espego\CliRouter\CommandResult;
 use Espego\CliRouter\Commands;
 use Espego\CliRouter\Opt;
+use Espego\CliRouter\StringList;
 
 /** The declarations the review's reproductions used. */
 #[Cli(summary: 'Edges.')]
@@ -57,6 +58,33 @@ final class EdgeSet extends Commands
             'json' => $json,
             'paths' => $paths,
         ]);
+    }
+
+    /** Cardinality lives in minCount/maxCount, where it used to be min/max doing double duty. */
+    #[Command('Take between two and three tags.')]
+    public function commandTags(
+        #[Opt('A tag.', placeholder: 'tag', minCount: 2, maxCount: 3)]
+        StringList $tags,
+    ): CommandResult {
+        return CommandResult::json($tags->all());
+    }
+
+    /** trim: false used to apply to the whole value and not to the elements it was split into. */
+    #[Command('Take a list without trimming it.')]
+    public function commandLoose(
+        #[Opt('An untrimmed element.', placeholder: 'raw', trim: false)]
+        StringList $loose,
+    ): CommandResult {
+        return CommandResult::json($loose->all());
+    }
+
+    /** Writes through output(), which is only answerable while a command is actually running. */
+    #[Command('Write a line as it goes.')]
+    public function commandSpeak(): CommandResult
+    {
+        $this->output()->out("spoken\n");
+
+        return CommandResult::nothing();
     }
 
     #[Command('Name the running command.')]
