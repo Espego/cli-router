@@ -14,6 +14,8 @@ use BackedEnum;
  * Every width is counted in CHARACTERS, never bytes. A byte-counted indent puts a line carrying a
  * tick or a diacritic in the wrong column, and the text wraps early by however many multi-byte
  * characters it happens to contain.
+ *
+ * @internal Not part of the public surface; may change in any release.
  */
 final class HelpRenderer
 {
@@ -47,7 +49,13 @@ final class HelpRenderer
             $out .= $this->argumentList($set->only(), $set->meta->width);
             $options = [...$set->only()->options(), ...$set->globalsFor($set->only())];
         } else {
-            $options = $set->globals;
+            // Only the globals that apply everywhere. One gated by a marker attribute applies to
+            // some commands and not others, so listing it here states something untrue of most of
+            // them; it belongs in the help of the commands that actually take it.
+            $options = array_values(array_filter(
+                $set->globals,
+                static fn (ValueSpec $g): bool => ! $g->meta instanceof Opt || $g->meta->onlyWhen === null,
+            ));
         }
 
         $out .= "\n" . $this->optionList($options, $set->meta->width);

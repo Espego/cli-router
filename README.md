@@ -151,7 +151,7 @@ message and nothing else, whatever the command would have gone on to do.
 
 ## Development
 
-The dev dependencies are `nette/tester` and `phpstan/phpstan`, both pinned to exact versions in
+The dev dependencies are `nette/tester`, `phpstan/phpstan` and `symplify/easy-coding-standard`, all pinned to exact versions in
 `composer.json`. There is no lockfile yet, so the first run has to resolve them; after that:
 
 ```

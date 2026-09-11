@@ -11,7 +11,7 @@ $parser = new ArgumentParser();
 
 // Command plus a valued option.
 Assert::same(
-	['args' => ['events'], 'opts' => ['msa' => 'IC0012345678']],
+	['args' => ['events'], 'opts' => ['msa' => 'IC0012345678'], 'duplicates' => []],
 	$parser->parse(['events', '--msa=IC0012345678']),
 );
 
@@ -33,13 +33,26 @@ Assert::same(
 // An explicitly empty value stays an empty string — distinct from a bare flag's `true`.
 Assert::same('', $parser->parse(['--note='])['opts']['note']);
 
-// A lone '--' carries no name and is ignored rather than creating an empty-string key.
-Assert::same(['args' => [], 'opts' => []], $parser->parse(['--']));
+// A bare '--' ends option parsing: everything after it is positional, whatever it looks like.
+// Without this there is no way at all to pass a path beginning with '--'.
+Assert::same(['args' => [], 'opts' => [], 'duplicates' => []], $parser->parse(['--']));
+Assert::same(['--x', '-y', 'z'], $parser->parse(['--', '--x', '-y', 'z'])['args']);
+Assert::same(['flag' => true], $parser->parse(['--flag', '--', '--x'])['opts']);
+Assert::same(['--x'], $parser->parse(['--flag', '--', '--x'])['args']);
 
 // Values that look like options are kept verbatim.
 Assert::same('--not-a-flag', $parser->parse(['--note=--not-a-flag'])['opts']['note']);
 
-// A repeated option takes the last occurrence.
-Assert::same('second', $parser->parse(['--msa=first', '--msa=second'])['opts']['msa']);
+// A repeated option is REPORTED, not resolved. Quietly keeping one of the two is what let a
+// malformed `--confirm=false` be rescued by a later bare `--confirm`; the runner rejects the run.
+// Multi-value options take a separator, so a repeat is a mistake either way.
+Assert::same(['msa'], $parser->parse(['--msa=first', '--msa=second'])['duplicates']);
+Assert::same([], $parser->parse(['--msa=one', '--nr=two'])['duplicates']);
 
-Assert::same(['args' => [], 'opts' => []], $parser->parse([]));
+// Each repeated name is listed once, however many times it appeared, and in the order first seen.
+Assert::same(['a', 'b'], $parser->parse(['--a=1', '--b=1', '--a=2', '--b=2', '--a=3'])['duplicates']);
+
+// A name repeated only after '--' is a positional, not a duplicate.
+Assert::same([], $parser->parse(['--a=1', '--', '--a=2'])['duplicates']);
+
+Assert::same(['args' => [], 'opts' => [], 'duplicates' => []], $parser->parse([]));

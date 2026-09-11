@@ -13,6 +13,8 @@ use ReflectionProperty;
  *
  * Parameters and globals share this shape deliberately, so the coercer has one code path and a
  * global cannot drift into behaving differently from an option of the same type.
+ *
+ * @internal Not part of the public surface; may change in any release.
  */
 final class ValueSpec
 {

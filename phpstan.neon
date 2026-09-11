@@ -3,5 +3,6 @@ parameters:
 
 	paths:
 		- src
+		- tests/fixtures
 
 	treatPhpDocTypesAsCertain: false

@@ -19,36 +19,47 @@ final class ArgumentParser
 {
     /**
      * @param list<string> $argv Arguments WITHOUT the script name.
-     * @return array{args: list<string>, opts: array<string, string|true>}
+     * @return array{args: list<string>, opts: array<string, string|true>, duplicates: list<string>}
      */
     public function parse(array $argv): array
     {
         $args = [];
         $opts = [];
+        $duplicates = [];
+        $endOfOptions = false;
 
         foreach ($argv as $arg) {
-            if (! str_starts_with($arg, '--')) {
+            if ($endOfOptions || ! str_starts_with($arg, '--')) {
                 $args[] = $arg;
                 continue;
             }
 
             $body = substr($arg, 2);
+
+            // A bare `--` ends option parsing. Without it there is no way at all to pass a path
+            // beginning with `--`, which a file-oriented CLI eventually needs.
             if ($body === '') {
+                $endOfOptions = true;
                 continue;
             }
 
             // Only the FIRST '=' splits, so a value may itself contain one.
             $eq = strpos($body, '=');
-            if ($eq === false) {
-                $opts[$body] = true;
-            } else {
-                $opts[substr($body, 0, $eq)] = substr($body, $eq + 1);
+            $name = $eq === false ? $body : substr($body, 0, $eq);
+
+            // Reported, never resolved: silently keeping one of two occurrences is how a malformed
+            // `--confirm=false` gets rescued by a later bare `--confirm`.
+            if (array_key_exists($name, $opts) && ! in_array($name, $duplicates, true)) {
+                $duplicates[] = $name;
             }
+
+            $opts[$name] = $eq === false ? true : substr($body, $eq + 1);
         }
 
         return [
             'args' => $args,
             'opts' => $opts,
+            'duplicates' => $duplicates,
         ];
     }
 }

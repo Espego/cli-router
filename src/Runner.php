@@ -12,6 +12,8 @@ use Throwable;
  * The step order is the design. Help, an unknown command, an unknown option and every type,
  * pattern or range failure all resolve BEFORE a middleware runs and before a command body exists —
  * so a mistyped flag costs an error message and nothing else, whatever the command would have done.
+ *
+ * @internal Not part of the public surface; may change in any release.
  */
 final class Runner
 {
@@ -33,7 +35,19 @@ final class Runner
         $set = $this->introspector->set($this->set);
 
         try {
-            ['args' => $args, 'opts' => $opts] = (new ArgumentParser())->parse(array_slice($argv, 1));
+            ['args' => $args, 'opts' => $opts, 'duplicates' => $duplicates] =
+                (new ArgumentParser())->parse(array_slice($argv, 1));
+
+            // Keeping the last occurrence let a malformed flag be rescued by a well-formed one:
+            // `--confirm=false --confirm` read as true and the write went ahead. Multi-value
+            // options have a separator, so a repeat is a mistake either way.
+            if ($duplicates !== []) {
+                throw new UsageError(sprintf(
+                    '%s %s given more than once',
+                    implode(', ', array_map(static fn (string $o): string => '--' . $o, $duplicates)),
+                    count($duplicates) === 1 ? 'was' : 'were',
+                ));
+            }
 
             $topic = $this->helpTopic($set, $args, $opts);
             if ($topic !== false) {
@@ -52,7 +66,7 @@ final class Runner
             $globals = $this->coercer->globals($set, $command, $opts);
             $arguments = $this->coercer->arguments($command, $opts, $args);
         } catch (UsageError $e) {
-            $output->err('error: ' . $e->getMessage() . "\n");
+            $output->err('error: ' . self::safe($e->getMessage()) . "\n");
 
             return $e->exitCode;
         }
@@ -75,19 +89,23 @@ final class Runner
             }
 
             $invocation = new Invocation($command->name, $command->method, $arguments, $output);
-            $this->set->bindInvocation($invocation, $output);
-
             $this->coercer->assertCallable($command->method, $arguments);
 
-            $result = $this->pipeline($invocation);
+            $this->set->bindInvocation($invocation, $output);
+
+            try {
+                $result = $this->pipeline($invocation);
+            } finally {
+                $this->set->bindInvocation(null, null);
+            }
         } catch (UsageError $e) {
-            $output->err('error: ' . $e->getMessage() . "\n");
+            $output->err('error: ' . self::safe($e->getMessage()) . "\n");
 
             return $e->exitCode;
         } catch (Stop $e) {
             $result = $e->result;
         } catch (InternalError $e) {
-            $output->err('internal error: ' . $e->getMessage() . "\n");
+            $output->err('internal error: ' . self::safe($e->getMessage()) . "\n");
 
             return self::EXIT_INTERNAL;
         } catch (Throwable $e) {
@@ -97,7 +115,7 @@ final class Runner
                 // how a broken deployment comes to look like a clean refusal.
                 throw $e;
             }
-            $output->err(sprintf($mapped->format, $e->getMessage()) . "\n");
+            $output->err(sprintf($mapped->format, self::safe($e->getMessage())) . "\n");
 
             return $mapped->exitCode;
         }
@@ -133,14 +151,21 @@ final class Runner
 
     private function emit(CommandResult $result, Output $output): int
     {
+        // Encoded BEFORE a single byte is written. json_encode() returning false used to produce a
+        // lone newline on stdout and exit 0 — a silent empty success, which is precisely the
+        // failure a machine-readable stdout cannot signal. JSON_THROW_ON_ERROR makes it a fault,
+        // and doing it first means that fault cannot leave a notice on stderr with nothing under it.
+        $payload = $result->text;
+        if ($payload === null && $result->hasJson) {
+            $payload = json_encode($result->json, $this->jsonFlags | JSON_THROW_ON_ERROR) . "\n";
+        }
+
         foreach ($result->notices as $line) {
             $output->err($line . "\n");
         }
 
-        if ($result->text !== null) {
-            $output->out($result->text);
-        } elseif ($result->hasJson) {
-            $output->out(json_encode($result->json, $this->jsonFlags) . "\n");
+        if ($payload !== null) {
+            $output->out($payload);
         }
 
         foreach ($result->warnings as $line) {
@@ -148,6 +173,16 @@ final class Runner
         }
 
         return $result->exitCode;
+    }
+
+    /**
+     * Diagnostics quote things the process did not author — an argument the user typed, a message
+     * from an upstream system. Those reach a terminal, where an escape sequence is executed rather
+     * than shown, and a newline forges what looks like a second line of our own output.
+     */
+    private static function safe(string $message): string
+    {
+        return (string) preg_replace('/[\x00-\x1F\x7F]/u', '?', $message);
     }
 
     /**

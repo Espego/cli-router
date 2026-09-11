@@ -6,6 +6,7 @@ namespace Espego\CliRouter;
 
 use ReflectionMethod;
 
+/** @internal Not part of the public surface; may change in any release. */
 final class CommandInfo
 {
     /** @param list<ValueSpec> $params In declaration order — which is command-line order. */

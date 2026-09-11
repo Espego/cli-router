@@ -7,6 +7,7 @@ namespace Espego\CliRouter;
 use BackedEnum;
 use DateTimeImmutable;
 use DateTimeInterface;
+use ReflectionEnum;
 use ReflectionMethod;
 use ReflectionNamedType;
 use Throwable;
@@ -19,6 +20,8 @@ use Throwable;
  * be of type int, string given` — neither is acceptable output for someone who mistyped a flag.
  * Every such failure is caught here and reported in the package's own words, before the command is
  * called at all.
+ *
+ * @internal Not part of the public surface; may change in any release.
  */
 final class Coercer
 {
@@ -275,12 +278,7 @@ final class Coercer
         if ($spec->meta->min === 1 && $spec->meta->max === null && $int < 1) {
             $this->reject($spec, 'must be a positive integer', $value);
         }
-        if ($spec->meta->min !== null && $int < $spec->meta->min) {
-            $this->reject($spec, "must be at least {$spec->meta->min}", $value);
-        }
-        if ($spec->meta->max !== null && $int > $spec->meta->max) {
-            $this->reject($spec, "must be at most {$spec->meta->max}", $value);
-        }
+        $this->assertBounds($spec, $int, $value);
 
         return $int;
     }
@@ -294,13 +292,22 @@ final class Coercer
             $this->reject($spec, 'must be a number', $value);
         }
 
+        $this->assertBounds($spec, $float, $value);
+
         return $float;
     }
 
     /** @param class-string<BackedEnum> $enum */
     private function enum(ValueSpec $spec, string $enum, string $value): BackedEnum
     {
-        $case = $enum::tryFrom($value);
+        // tryFrom() on an int-backed enum rejects a string outright under strict_types, so the raw
+        // argument threw a TypeError straight out of the layer whose job is to stop engine errors
+        // reaching the user. The backing type decides what it is handed.
+        $backing = (string) (new ReflectionEnum($enum))->getBackingType();
+        $case = $backing === 'int'
+            ? $this->intBackedCase($enum, $value)
+            : $enum::tryFrom($value);
+
         if ($case !== null) {
             return $case;
         }
@@ -318,6 +325,16 @@ final class Coercer
             $allowed,
             $this->hint($spec),
         ));
+    }
+
+    /**
+     * @param class-string<BackedEnum> $enum
+     */
+    private function intBackedCase(string $enum, string $value): ?BackedEnum
+    {
+        $int = filter_var($value, FILTER_VALIDATE_INT);
+
+        return $int === false ? null : $enum::tryFrom($int);
     }
 
     private function date(ValueSpec $spec, string $value): DateTimeImmutable
@@ -345,11 +362,22 @@ final class Coercer
         if ($spec->meta instanceof Arg && $spec->meta->required && $count === 0) {
             throw new UsageError("at least one <{$spec->placeholder()}> is required");
         }
-        if ($spec->meta->min !== null && $count < $spec->meta->min) {
-            throw new UsageError("at least {$spec->meta->min} <{$spec->placeholder()}> are required");
+        if ($spec->meta->minCount !== null && $count < $spec->meta->minCount) {
+            throw new UsageError("at least {$spec->meta->minCount} <{$spec->placeholder()}> are required");
         }
-        if ($spec->meta->max !== null && $count > $spec->meta->max) {
-            throw new UsageError("at most {$spec->meta->max} <{$spec->placeholder()}> are accepted");
+        if ($spec->meta->maxCount !== null && $count > $spec->meta->maxCount) {
+            throw new UsageError("at most {$spec->meta->maxCount} <{$spec->placeholder()}> are accepted");
+        }
+    }
+
+    /** Numeric bounds, shared by int and float so neither can quietly ignore a declared limit. */
+    private function assertBounds(ValueSpec $spec, int|float $number, string $value): void
+    {
+        if ($spec->meta->min !== null && $number < $spec->meta->min) {
+            $this->reject($spec, 'must be at least ' . $spec->meta->min, $value);
+        }
+        if ($spec->meta->max !== null && $number > $spec->meta->max) {
+            $this->reject($spec, 'must be at most ' . $spec->meta->max, $value);
         }
     }
 

@@ -22,8 +22,10 @@ abstract class Param
      * @param non-empty-string $separator What a list-typed parameter splits its raw value on.
      * @param non-empty-string|null $pattern preg the raw value must match.
      * @param string|null $hint Sentence appended to a constraint failure.
-     * @param int|null $min Integers: minimum value. Variadic arguments: minimum count.
-     * @param int|null $max Integers: maximum value. Variadic arguments: maximum count.
+     * @param int|float|null $min Smallest accepted value, for int and float.
+     * @param int|float|null $max Largest accepted value, for int and float.
+     * @param int|null $minCount Fewest accepted elements, for a list or a variadic.
+     * @param int|null $maxCount Most accepted elements, for a list or a variadic.
      * @param bool $allowEmpty Accept `--x=` as the empty string rather than refusing it.
      * @param bool $trim Trim the raw value before coercing it.
      */
@@ -34,8 +36,10 @@ abstract class Param
         public string $separator = ',',
         public ?string $pattern = null,
         public ?string $hint = null,
-        public ?int $min = null,
-        public ?int $max = null,
+        public int|float|null $min = null,
+        public int|float|null $max = null,
+        public ?int $minCount = null,
+        public ?int $maxCount = null,
         public bool $allowEmpty = false,
         public bool $trim = true,
     ) {

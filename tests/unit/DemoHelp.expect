@@ -1,0 +1,26 @@
+Demo CLI.
+
+  php demo.php <command> [options]
+  php demo.php help [<command>]
+
+Read:
+  env                    Say which host.
+  contracts [--nr=<nr>]  Filter by number.
+  events --msa=<msaNr>[,<msaNr>...] [--ids=<id>[,<id>...]]
+         [--colours=<red|green|blue>[,...]]
+                         Comma-separated values.
+  typed --colour=<red|green|blue> [--count=<n>] [--at=<ATOM>] [--on=<Y-m-d>] [--note=<note>]
+                         Typed values.
+  report [--code=<n>]    Text output, custom exit code.
+  nope                   Fail from a helper.
+  fault                  Throw something undeclared.
+
+Write:
+  save --what=<what>     Write something.
+  rename                 Name the running command without a literal.
+
+Options:
+  --raw                  Print the raw response.
+  --help                 Print this.
+
+Footer prose.

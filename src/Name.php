@@ -8,9 +8,11 @@ namespace Espego\CliRouter;
  * The one mapping between PHP identifiers and command-line names.
  *
  * `commandNoteDone` is `note-done`; `$intendedEnv` is `--intended-env`. It is total for the names
- * that occur in practice, and `isLossless()` exists so the introspector can refuse a name where it
+ * that occur in practice, and `isValid()` exists so the introspector can refuse a name where it
  * is not — consecutive capitals, a digit boundary, an underscore — rather than let the help
  * quietly describe a flag nobody can type.
+ *
+ * @internal Not part of the public surface; may change in any release.
  */
 final class Name
 {

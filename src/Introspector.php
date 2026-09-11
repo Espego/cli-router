@@ -19,9 +19,18 @@ use ReflectionProperty;
  * Every mistake it can detect, it throws on — a command method without #[Command], a name that
  * cannot become a flag, a global colliding with a parameter. A declaration error must fail on the
  * first run, loudly, rather than turn into help text that lies.
+ *
+ * @internal Not part of the public surface; may change in any release.
  */
 final class Introspector
 {
+    /**
+     * Names the runner answers itself, so a declaration using one could never be reached.
+     *
+     * @var list<string>
+     */
+    private const RESERVED = ['help'];
+
     public function set(object $set): SetInfo
     {
         $class = new ReflectionClass($set);
@@ -82,6 +91,21 @@ final class Introspector
             }
 
             $name = Name::ofCommand($method->getName());
+            $where = $class->getName() . '::' . $method->getName() . '()';
+
+            if (in_array($name, self::RESERVED, true)) {
+                throw new LogicException("{$where}: '{$name}' is a reserved command name.");
+            }
+            if (isset($commands[$name])) {
+                throw new LogicException(sprintf(
+                    "%s: '%s' is declared twice — %s() and %s() both normalise to it.",
+                    $class->getName(),
+                    $name,
+                    $commands[$name]->method->getName(),
+                    $method->getName(),
+                ));
+            }
+
             $params = $this->params($method, $globalNames);
 
             $commands[$name] = new CommandInfo($name, $method, $meta, $params);
@@ -119,6 +143,10 @@ final class Introspector
 
             $cliName = Name::toKebab($parameter->getName());
             $positional = $meta instanceof Arg;
+
+            if (! $positional && in_array($cliName, self::RESERVED, true)) {
+                throw new LogicException("{$where}: --{$cliName} is reserved by the runner.");
+            }
 
             if (! $positional && in_array($cliName, $globalNames, true)) {
                 throw new LogicException("{$where}: --{$cliName} is already a global of this set.");
@@ -179,6 +207,9 @@ final class Introspector
             $where = $class->getName() . '::$' . $property->getName();
             if (! Name::isValid($property->getName())) {
                 throw new LogicException("{$where}: cannot become a command-line name. Use plain camelCase.");
+            }
+            if (in_array(Name::toKebab($property->getName()), self::RESERVED, true)) {
+                throw new LogicException("{$where}: that name is reserved by the runner.");
             }
             if (! $property->hasDefaultValue()) {
                 throw new LogicException(

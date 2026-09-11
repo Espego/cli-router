@@ -116,9 +116,13 @@ abstract class Commands
     }
 
     /**
-     * @internal Called by Runner once the invocation is fully validated.
+     * @internal Called by Runner around the pipeline, and cleared again when it returns.
+     *
+     * Scoped rather than left behind: a set is a long-lived object, and context that outlives its
+     * call means a later direct invocation reads the previous command's name — a lie that surfaces
+     * only inside a message a human then reads.
      */
-    final public function bindInvocation(Invocation $invocation, Output $output): void
+    final public function bindInvocation(?Invocation $invocation, ?Output $output): void
     {
         $this->invocation = $invocation;
         $this->output = $output;

@@ -20,12 +20,14 @@ final class Arg extends Param
         string $separator = ',',
         ?string $pattern = null,
         ?string $hint = null,
-        ?int $min = null,
-        ?int $max = null,
+        int|float|null $min = null,
+        int|float|null $max = null,
+        ?int $minCount = null,
+        ?int $maxCount = null,
         bool $allowEmpty = false,
         bool $trim = true,
         public bool $required = false,
     ) {
-        parent::__construct($description, $placeholder, $separator, $pattern, $hint, $min, $max, $allowEmpty, $trim);
+        parent::__construct($description, $placeholder, $separator, $pattern, $hint, $min, $max, $minCount, $maxCount, $allowEmpty, $trim);
     }
 }

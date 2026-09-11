@@ -7,6 +7,7 @@ namespace Espego\CliRouter;
 use LogicException;
 use Throwable;
 
+/** @internal Not part of the public surface; may change in any release. */
 final class SetInfo
 {
     /**
