@@ -13,6 +13,6 @@ namespace Espego\CliRouter;
  */
 interface Middleware
 {
-	/** @param callable(): CommandResult $next */
-	public function handle(Invocation $invocation, callable $next): CommandResult;
+    /** @param callable(): CommandResult $next */
+    public function handle(Invocation $invocation, callable $next): CommandResult;
 }

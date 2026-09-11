@@ -10,7 +10,7 @@ namespace Espego\CliRouter;
  */
 interface Output
 {
-	public function out(string $bytes): void;
+    public function out(string $bytes): void;
 
-	public function err(string $bytes): void;
+    public function err(string $bytes): void;
 }

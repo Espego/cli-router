@@ -14,8 +14,10 @@ use RuntimeException;
  */
 class UsageError extends RuntimeException
 {
-	public function __construct(string $message, public readonly int $exitCode = 1)
-	{
-		parent::__construct($message);
-	}
+    public function __construct(
+        string $message,
+        public readonly int $exitCode = 1
+    ) {
+        parent::__construct($message);
+    }
 }

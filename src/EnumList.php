@@ -25,53 +25,53 @@ use Traversable;
  */
 abstract class EnumList implements ValueList
 {
-	/** @var list<T> */
-	private readonly array $values;
+    /** @var list<T> */
+    private readonly array $values;
 
-	/** @param list<T> $values */
-	final public function __construct(array $values = [])
-	{
-		$this->values = $values;
-	}
+    /** @param list<T> $values */
+    final public function __construct(array $values = [])
+    {
+        $this->values = $values;
+    }
 
-	/** @param list<mixed> $values */
-	public static function of(array $values): static
-	{
-		/** @var list<T> $values */
-		return new static($values);
-	}
+    /** @param list<mixed> $values */
+    public static function of(array $values): static
+    {
+        /** @var list<T> $values */
+        return new static($values);
+    }
 
-	/** @return list<T> */
-	public function all(): array
-	{
-		return $this->values;
-	}
+    /** @return list<T> */
+    public function all(): array
+    {
+        return $this->values;
+    }
 
-	/** @return T|null */
-	public function first(): ?BackedEnum
-	{
-		return $this->values[0] ?? null;
-	}
+    /** @return T|null */
+    public function first(): ?BackedEnum
+    {
+        return $this->values[0] ?? null;
+    }
 
-	/** @param T $value */
-	public function contains(BackedEnum $value): bool
-	{
-		return in_array($value, $this->values, true);
-	}
+    /** @param T $value */
+    public function contains(BackedEnum $value): bool
+    {
+        return in_array($value, $this->values, true);
+    }
 
-	public function isEmpty(): bool
-	{
-		return $this->values === [];
-	}
+    public function isEmpty(): bool
+    {
+        return $this->values === [];
+    }
 
-	public function count(): int
-	{
-		return count($this->values);
-	}
+    public function count(): int
+    {
+        return count($this->values);
+    }
 
-	/** @return Traversable<int, T> */
-	public function getIterator(): Traversable
-	{
-		return new ArrayIterator($this->values);
-	}
+    /** @return Traversable<int, T> */
+    public function getIterator(): Traversable
+    {
+        return new ArrayIterator($this->values);
+    }
 }

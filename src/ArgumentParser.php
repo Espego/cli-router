@@ -17,35 +17,38 @@ namespace Espego\CliRouter;
  */
 final class ArgumentParser
 {
-	/**
-	 * @param list<string> $argv Arguments WITHOUT the script name.
-	 * @return array{args: list<string>, opts: array<string, string|true>}
-	 */
-	public function parse(array $argv): array
-	{
-		$args = [];
-		$opts = [];
+    /**
+     * @param list<string> $argv Arguments WITHOUT the script name.
+     * @return array{args: list<string>, opts: array<string, string|true>}
+     */
+    public function parse(array $argv): array
+    {
+        $args = [];
+        $opts = [];
 
-		foreach ($argv as $arg) {
-			if (!str_starts_with($arg, '--')) {
-				$args[] = $arg;
-				continue;
-			}
+        foreach ($argv as $arg) {
+            if (! str_starts_with($arg, '--')) {
+                $args[] = $arg;
+                continue;
+            }
 
-			$body = substr($arg, 2);
-			if ($body === '') {
-				continue;
-			}
+            $body = substr($arg, 2);
+            if ($body === '') {
+                continue;
+            }
 
-			// Only the FIRST '=' splits, so a value may itself contain one.
-			$eq = strpos($body, '=');
-			if ($eq === false) {
-				$opts[$body] = true;
-			} else {
-				$opts[substr($body, 0, $eq)] = substr($body, $eq + 1);
-			}
-		}
+            // Only the FIRST '=' splits, so a value may itself contain one.
+            $eq = strpos($body, '=');
+            if ($eq === false) {
+                $opts[$body] = true;
+            } else {
+                $opts[substr($body, 0, $eq)] = substr($body, $eq + 1);
+            }
+        }
 
-		return ['args' => $args, 'opts' => $opts];
-	}
+        return [
+            'args' => $args,
+            'opts' => $opts,
+        ];
+    }
 }

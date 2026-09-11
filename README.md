@@ -37,10 +37,14 @@ final class CommandSet extends Commands
 
     #[Command('Print one HTML file to PDF.')]
     public function commandRun(
-        #[Arg('The file to print.', placeholder: 'file.html')] string $file,
-        #[Opt('Output path. Defaults to the input name with a .pdf extension.')] ?string $out = null,
-        #[Opt('Draw the letterhead and set the document title.')] ?string $title = null,
-        #[Opt('Keep the heading, drop the mark.')] bool $noLogo = false,
+        #[Arg('The file to print.', placeholder: 'file.html')]
+        string $file,
+        #[Opt('Output path. Defaults to the input name with a .pdf extension.')]
+        ?string $out = null,
+        #[Opt('Draw the letterhead and set the document title.')]
+        ?string $title = null,
+        #[Opt('Keep the heading, drop the mark.')]
+        bool $noLogo = false,
     ): CommandResult {
         $out ??= preg_replace('/\.html?$/iu', '', $file) . '.pdf';
 
@@ -65,8 +69,11 @@ options that do exist, `--title` with no value rejected, `--no-logo=false` rejec
 Multi-value options are a **type**, not an `array` with a docblock:
 
 ```php
-#[Opt('MSA numbers.', placeholder: 'msaNr')] StringList $msa,     // --msa=IC01,IC02
-#[Opt('Instance ids.', placeholder: 'id')]   ?IntList $instance = null,
+#[Opt('MSA numbers.', placeholder: 'msaNr')]
+StringList $msa,                    // --msa=IC01,IC02
+
+#[Opt('Instance ids.', placeholder: 'id')]
+?IntList $instance = null,
 ```
 
 `StringList` and `IntList` ship with the package. For a list of one particular enum, name it once:
@@ -150,4 +157,6 @@ The dev dependencies are `nette/tester` and `phpstan/phpstan`, both pinned to ex
 ```
 composer tester          # tests
 composer phpstan         # level max, over src/
+composer ecs             # coding standard, check only
+composer ecs-fix         # coding standard, apply
 ```

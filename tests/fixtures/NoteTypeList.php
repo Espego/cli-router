@@ -14,8 +14,8 @@ use Espego\CliRouter\EnumList;
  */
 final class NoteTypeList extends EnumList
 {
-	public static function elementType(): string
-	{
-		return Colour::class;
-	}
+    public static function elementType(): string
+    {
+        return Colour::class;
+    }
 }

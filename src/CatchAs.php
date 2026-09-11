@@ -16,14 +16,14 @@ use Attribute;
 #[Attribute(Attribute::TARGET_CLASS | Attribute::IS_REPEATABLE)]
 final class CatchAs
 {
-	/**
-	 * @param class-string<\Throwable> $exception Matched with instanceof, so a base class catches its subclasses.
-	 * @param string $format sprintf template; one %s receives getMessage().
-	 */
-	public function __construct(
-		public string $exception,
-		public int $exitCode,
-		public string $format = 'error: %s',
-	) {
-	}
+    /**
+     * @param class-string<\Throwable> $exception Matched with instanceof, so a base class catches its subclasses.
+     * @param string $format sprintf template; one %s receives getMessage().
+     */
+    public function __construct(
+        public string $exception,
+        public int $exitCode,
+        public string $format = 'error: %s',
+    ) {
+    }
 }

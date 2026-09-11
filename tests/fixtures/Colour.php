@@ -6,7 +6,7 @@ namespace Espego\CliRouter\Tests;
 
 enum Colour: string
 {
-	case Red = 'red';
-	case Green = 'green';
-	case Blue = 'blue';
+    case Red = 'red';
+    case Green = 'green';
+    case Blue = 'blue';
 }

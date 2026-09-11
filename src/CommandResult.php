@@ -16,67 +16,67 @@ namespace Espego\CliRouter;
  */
 final class CommandResult
 {
-	/**
-	 * @param list<string> $notices stderr, before stdout
-	 * @param list<string> $warnings stderr, after stdout
-	 */
-	private function __construct(
-		public readonly int $exitCode,
-		public readonly ?string $text,
-		public readonly mixed $json,
-		public readonly bool $hasJson,
-		public readonly array $notices,
-		public readonly array $warnings,
-	) {
-	}
+    /**
+     * @param list<string> $notices stderr, before stdout
+     * @param list<string> $warnings stderr, after stdout
+     */
+    private function __construct(
+        public readonly int $exitCode,
+        public readonly ?string $text,
+        public readonly mixed $json,
+        public readonly bool $hasJson,
+        public readonly array $notices,
+        public readonly array $warnings,
+    ) {
+    }
 
-	/** Encoded by the runner, so every script in a family formats JSON the same way. */
-	public static function json(mixed $data, int $exitCode = 0): self
-	{
-		return new self($exitCode, null, $data, true, [], []);
-	}
+    /** Encoded by the runner, so every script in a family formats JSON the same way. */
+    public static function json(mixed $data, int $exitCode = 0): self
+    {
+        return new self($exitCode, null, $data, true, [], []);
+    }
 
-	/**
-	 * Pre-rendered bytes, emitted verbatim.
-	 *
-	 * No trailing newline is added: a renderer that already decided where its newlines go must not
-	 * have one appended behind its back.
-	 */
-	public static function text(string $bytes, int $exitCode = 0): self
-	{
-		return new self($exitCode, $bytes, null, false, [], []);
-	}
+    /**
+     * Pre-rendered bytes, emitted verbatim.
+     *
+     * No trailing newline is added: a renderer that already decided where its newlines go must not
+     * have one appended behind its back.
+     */
+    public static function text(string $bytes, int $exitCode = 0): self
+    {
+        return new self($exitCode, $bytes, null, false, [], []);
+    }
 
-	/** An exit code and nothing on stdout. */
-	public static function nothing(int $exitCode = 0): self
-	{
-		return new self($exitCode, null, null, false, [], []);
-	}
+    /** An exit code and nothing on stdout. */
+    public static function nothing(int $exitCode = 0): self
+    {
+        return new self($exitCode, null, null, false, [], []);
+    }
 
-	/** A line that frames what follows. */
-	public function withNotice(string ...$lines): self
-	{
-		$notices = $this->notices;
-		foreach ($lines as $line) {
-			$notices[] = $line;
-		}
+    /** A line that frames what follows. */
+    public function withNotice(string ...$lines): self
+    {
+        $notices = $this->notices;
+        foreach ($lines as $line) {
+            $notices[] = $line;
+        }
 
-		return new self($this->exitCode, $this->text, $this->json, $this->hasJson, $notices, $this->warnings);
-	}
+        return new self($this->exitCode, $this->text, $this->json, $this->hasJson, $notices, $this->warnings);
+    }
 
-	/** A line that qualifies what was just printed. */
-	public function withWarning(string ...$lines): self
-	{
-		$warnings = $this->warnings;
-		foreach ($lines as $line) {
-			$warnings[] = $line;
-		}
+    /** A line that qualifies what was just printed. */
+    public function withWarning(string ...$lines): self
+    {
+        $warnings = $this->warnings;
+        foreach ($lines as $line) {
+            $warnings[] = $line;
+        }
 
-		return new self($this->exitCode, $this->text, $this->json, $this->hasJson, $this->notices, $warnings);
-	}
+        return new self($this->exitCode, $this->text, $this->json, $this->hasJson, $this->notices, $warnings);
+    }
 
-	public function withExitCode(int $exitCode): self
-	{
-		return new self($exitCode, $this->text, $this->json, $this->hasJson, $this->notices, $this->warnings);
-	}
+    public function withExitCode(int $exitCode): self
+    {
+        return new self($exitCode, $this->text, $this->json, $this->hasJson, $this->notices, $this->warnings);
+    }
 }

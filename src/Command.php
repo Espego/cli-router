@@ -17,16 +17,16 @@ use Attribute;
 #[Attribute(Attribute::TARGET_METHOD)]
 final class Command
 {
-	/**
-	 * @param string|null $description Prose printed between the synopsis and the option list.
-	 * @param string|null $group One of the headings declared in #[Cli(groups:)].
-	 * @param bool $hidden Dispatchable, but left out of the command list.
-	 */
-	public function __construct(
-		public string $summary,
-		public ?string $description = null,
-		public ?string $group = null,
-		public bool $hidden = false,
-	) {
-	}
+    /**
+     * @param string|null $description Prose printed between the synopsis and the option list.
+     * @param string|null $group One of the headings declared in #[Cli(groups:)].
+     * @param bool $hidden Dispatchable, but left out of the command list.
+     */
+    public function __construct(
+        public string $summary,
+        public ?string $description = null,
+        public ?string $group = null,
+        public bool $hidden = false,
+    ) {
+    }
 }

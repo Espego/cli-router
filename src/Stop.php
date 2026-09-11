@@ -15,8 +15,9 @@ use RuntimeException;
  */
 final class Stop extends RuntimeException
 {
-	public function __construct(public readonly CommandResult $result)
-	{
-		parent::__construct('command stopped');
-	}
+    public function __construct(
+        public readonly CommandResult $result
+    ) {
+        parent::__construct('command stopped');
+    }
 }

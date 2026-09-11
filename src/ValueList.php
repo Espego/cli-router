@@ -24,17 +24,17 @@ use IteratorAggregate;
  */
 interface ValueList extends IteratorAggregate, Countable
 {
-	/**
-	 * What each element must become: `'string'`, `'int'`, `'float'`, or a backed enum class.
-	 *
-	 * @return 'string'|'int'|'float'|class-string<BackedEnum>
-	 */
-	public static function elementType(): string;
+    /**
+     * What each element must become: `'string'`, `'int'`, `'float'`, or a backed enum class.
+     *
+     * @return 'string'|'int'|'float'|class-string<BackedEnum>
+     */
+    public static function elementType(): string;
 
-	/**
-	 * Build from elements the coercer has already validated and converted.
-	 *
-	 * @param list<mixed> $values
-	 */
-	public static function of(array $values): static;
+    /**
+     * Build from elements the coercer has already validated and converted.
+     *
+     * @param list<mixed> $values
+     */
+    public static function of(array $values): static;
 }
