@@ -94,13 +94,6 @@ final class HelpRenderer
             return $this->hanging($head, $this->synopsis($command), $set->meta->width);
         }
 
-        if ($set->meta->usage !== null) {
-            return implode("\n", array_map(
-                static fn (string $line): string => '  ' . $line,
-                explode("\n", $set->meta->usage),
-            ));
-        }
-
         if ($set->meta->single) {
             return $this->hanging("  {$program} ", $this->synopsis($set->only()), $set->meta->width);
         }
@@ -115,9 +108,7 @@ final class HelpRenderer
 
         foreach ($command->params as $spec) {
             $part = $spec->synopsis();
-            $parts[] = $spec->isRequired() || ($spec->variadic && $spec->meta instanceof Arg && $spec->meta->required)
-                ? $part
-                : "[{$part}]";
+            $parts[] = $spec->mustBeGiven() ? $part : "[{$part}]";
         }
 
         return $parts;

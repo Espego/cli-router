@@ -83,7 +83,7 @@ final class DemoSet extends Commands
         int $count = 1,
         #[Opt('A moment.', placeholder: 'ATOM')]
         ?DateTimeImmutable $at = null,
-        #[Opt('A date.', placeholder: 'Y-m-d', pattern: '/^\d{4}-\d{2}-\d{2}$/', hint: 'No other format is accepted.')]
+        #[Opt('A date.', placeholder: 'Y-m-d', pattern: '/^\d{4}-\d{2}-\d{2}$/u', hint: 'No other format is accepted.')]
         ?string $on = null,
         #[Opt('Free text.', allowEmpty: true, trim: false)]
         string $note = '',

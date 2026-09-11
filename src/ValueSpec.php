@@ -44,6 +44,26 @@ final class ValueSpec
     }
 
     /**
+     * Must the caller supply this, as the help should show it?
+     *
+     * Wider than isRequired(): a variadic is never "required" in the arity sense — it is the
+     * coercer's count check that insists — but one declared with required or a minCount does have
+     * to be given, and bracketing it in the synopsis would advertise the opposite.
+     */
+    public function mustBeGiven(): bool
+    {
+        if ($this->isRequired()) {
+            return true;
+        }
+        if (! $this->variadic) {
+            return false;
+        }
+
+        return ($this->meta instanceof Arg && $this->meta->required)
+            || ($this->meta->minCount !== null && $this->meta->minCount >= 1);
+    }
+
+    /**
      * The backed enum this value must become, if it is one.
      *
      * @return class-string<BackedEnum>|null

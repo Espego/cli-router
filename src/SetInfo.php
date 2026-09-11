@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Espego\CliRouter;
 
-use LogicException;
 use Throwable;
 
 /** @internal Not part of the public surface; may change in any release. */
@@ -30,7 +29,7 @@ final class SetInfo
 
     public function get(string $name): CommandInfo
     {
-        return $this->commands[$name] ?? throw new LogicException("no command '{$name}'");
+        return $this->commands[$name] ?? throw new InternalError("no command '{$name}'");
     }
 
     /** @return list<string> */
@@ -42,7 +41,7 @@ final class SetInfo
     /** The single command of a `single: true` set. */
     public function only(): CommandInfo
     {
-        return array_values($this->commands)[0] ?? throw new LogicException('the set declares no command');
+        return array_values($this->commands)[0] ?? throw new InternalError('the set declares no command');
     }
 
     /**

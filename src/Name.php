@@ -18,7 +18,7 @@ final class Name
 {
     public static function toKebab(string $identifier): string
     {
-        $kebab = preg_replace('/(?<!^)[A-Z]/', '-$0', $identifier);
+        $kebab = preg_replace('/(?<!^)[A-Z]/u', '-$0', $identifier);
 
         return strtolower((string) $kebab);
     }
@@ -44,10 +44,13 @@ final class Name
      * Two conditions, and both are needed. It must be plain camelCase — an underscore round-trips
      * perfectly well and would yield `--some_thing`, a flag nobody would guess. And the kebab form
      * must convert back to the identifier it came from, so the mapping stays reversible.
+     *
+     * `\z` rather than `$`, which also matches before a trailing newline: an identifier can hold
+     * one, and it would have passed the round-trip too.
      */
     public static function isValid(string $identifier): bool
     {
-        if (preg_match('/^[a-z][a-zA-Z0-9]*$/', $identifier) !== 1) {
+        if (preg_match('/^[a-z][a-zA-Z0-9]*\z/u', $identifier) !== 1) {
             return false;
         }
 
