@@ -1,6 +1,6 @@
 {
 	"name": "espego/cli-router",
-	"description": "Declarative, reflection-driven CLI command sets. A command is a method; its signature is its options.",
+	"description": "Declarative, reflection-driven CLI command sets. A command is a method; its signature is its options. Internal to Espego; not for general use.",
 	"type": "library",
 	"license": "proprietary",
 	"require": {

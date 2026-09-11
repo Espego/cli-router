@@ -8,6 +8,16 @@ it cannot drift from the code it describes.
 
 One dependency: PHP 8.4.
 
+---
+
+> **Internal to Espego.** This is published so our own projects can pull it, not as a package for
+> general use. It is licensed `proprietary` — you do not have permission to use it. There is no
+> support, no issue triage, and no commitment to backwards compatibility: it is versioned `0.x`
+> precisely because the API will change whenever our own needs change, without notice or a
+> migration path. If it looks useful, copy the idea rather than depending on the package.
+
+---
+
 ## The whole thing
 
 ```php
