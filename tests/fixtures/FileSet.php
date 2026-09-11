@@ -13,7 +13,7 @@ use Espego\CliRouter\Opt;
 use Espego\CliRouter\WhenEmpty;
 
 /** A single-command set with a variadic positional — no subcommand word, no dependencies. */
-#[Cli(summary: 'Check files.', single: true, onEmpty: WhenEmpty::Error, emptyMessage: 'no file given.',)]
+#[Cli(summary: 'Check files.', single: true, onEmpty: WhenEmpty::Error, emptyMessage: 'no file given.')]
 final class FileSet extends Commands
 {
     #[Command('Audit one or more files.')]

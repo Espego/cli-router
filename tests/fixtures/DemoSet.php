@@ -15,7 +15,7 @@ use Espego\CliRouter\Opt;
 use Espego\CliRouter\StringList;
 
 /** A multi-command set exercising globals, enums, dates, lists, a write guard and an exception map. */
-#[Cli(summary: 'Demo CLI.', groups: ['Read', 'Write'], after: 'Footer prose.',)]
+#[Cli(summary: 'Demo CLI.', groups: ['Read', 'Write'], after: 'Footer prose.')]
 #[CatchAs(Refused::class, exitCode: 4, format: 'refused: %s')]
 final class DemoSet extends Commands
 {

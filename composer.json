@@ -9,8 +9,8 @@
 	},
 	"require-dev": {
 		"nette/tester": "v2.6.1",
-		"phpstan/phpstan": "2.1.42",
-		"symplify/easy-coding-standard": "13.1.5"
+		"phpstan/phpstan": "2.2.13",
+		"symplify/easy-coding-standard": "13.3.2"
 	},
 	"autoload": {
 		"psr-4": {
