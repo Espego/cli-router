@@ -1,0 +1,6 @@
+# Keep the distribution archive to what a consumer actually runs. Tests, fixtures and the
+# analyser config are for developing this package, not for sitting in someone's vendor/.
+/tests               export-ignore
+/phpstan.neon        export-ignore
+/.gitattributes      export-ignore
+/.gitignore          export-ignore
