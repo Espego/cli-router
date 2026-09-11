@@ -4,13 +4,16 @@ declare(strict_types=1);
 
 namespace Espego\CliRouter;
 
+use BackedEnum;
+use DateTimeImmutable;
+use DateTimeInterface;
 use LogicException;
 use ReflectionAttribute;
 use ReflectionClass;
 use ReflectionMethod;
 use ReflectionNamedType;
 use ReflectionParameter;
-use ReflectionProperty;
+use Throwable;
 
 /**
  * Reads a command set's declarations. The whole "single source of truth" claim lives here: nothing
@@ -57,7 +60,15 @@ final class Introspector
 
         $catches = [];
         foreach ($class->getAttributes(CatchAs::class) as $attribute) {
-            $catches[] = $attribute->newInstance();
+            $catch = $attribute->newInstance();
+            if (! is_a($catch->exception, Throwable::class, true)) {
+                throw new LogicException(sprintf(
+                    '%s: #[CatchAs] names %s, which is not a Throwable.',
+                    $class->getName(),
+                    $catch->exception,
+                ));
+            }
+            $catches[] = $catch;
         }
 
         return new SetInfo($cli, $commands, $globals, $catches);
@@ -167,8 +178,20 @@ final class Introspector
 
     private function spec(ReflectionParameter $parameter, Param $meta, string $cliName, bool $positional): ValueSpec
     {
+        $where = sprintf(
+            '%s::%s($%s)',
+            $parameter->getDeclaringClass()?->getName() ?? '?',
+            $parameter->getDeclaringFunction()->getName(),
+            $parameter->getName(),
+        );
+
+        if ($parameter->isPassedByReference()) {
+            throw new LogicException("{$where}: a command parameter cannot be by-reference.");
+        }
+
         $type = $parameter->getType();
         $named = $type instanceof ReflectionNamedType ? $type : null;
+        $this->assertSupported($named, $type === null, $meta, $where);
 
         return new ValueSpec(
             phpName: $parameter->getName(),
@@ -185,6 +208,51 @@ final class Introspector
     }
 
     /**
+     * A value the coercer can actually produce.
+     *
+     * Without this a union, an unknown class or a bare `array` fell through to the string branch
+     * and quietly became something the signature never asked for — the declaration and the runtime
+     * disagreeing, which is the one failure this package exists to prevent.
+     */
+    private function assertSupported(?ReflectionNamedType $named, bool $untyped, Param $meta, string $where): void
+    {
+        if ($meta->separator === '') {
+            throw new LogicException("{$where}: the separator cannot be empty.");
+        }
+        if ($meta->pattern !== null && @preg_match($meta->pattern, '') === false) {
+            throw new LogicException("{$where}: pattern is not a valid regular expression.");
+        }
+        if ($untyped || $named === null) {
+            throw new LogicException("{$where}: needs a type. Union and intersection types are not supported.");
+        }
+
+        $name = $named->getName();
+        if ($named->isBuiltin()) {
+            if (! in_array($name, ['string', 'int', 'float', 'bool'], true)) {
+                throw new LogicException(
+                    "{$where}: '{$name}' is not a supported option type. For several values, use a ValueList."
+                );
+            }
+
+            return;
+        }
+
+        if (is_a($name, BackedEnum::class, true) || is_a($name, ValueList::class, true)) {
+            return;
+        }
+        if ($name === DateTimeImmutable::class) {
+            return;
+        }
+        if (is_a($name, DateTimeInterface::class, true)) {
+            throw new LogicException(
+                "{$where}: use DateTimeImmutable — a mutable date handed to a command can be changed under it."
+            );
+        }
+
+        throw new LogicException("{$where}: '{$name}' is not a supported option type.");
+    }
+
+    /**
      * Set-wide options, declared as public properties carrying #[Opt].
      *
      * A property rather than a repeated parameter, because these are the options that genuinely
@@ -198,13 +266,23 @@ final class Introspector
     {
         $globals = [];
 
-        foreach ($class->getProperties(ReflectionProperty::IS_PUBLIC) as $property) {
+        foreach ($class->getProperties() as $property) {
             $meta = $this->attribute($property->getAttributes(Opt::class));
             if ($meta === null) {
                 continue;
             }
 
             $where = $class->getName() . '::$' . $property->getName();
+
+            // Declared but unreachable is worse than not declared: the help would advertise an
+            // option the runner could never assign.
+            if (! $property->isPublic()) {
+                throw new LogicException("{$where}: a global #[Opt] must be public.");
+            }
+            if ($property->isStatic()) {
+                throw new LogicException("{$where}: a global #[Opt] cannot be static.");
+            }
+
             if (! Name::isValid($property->getName())) {
                 throw new LogicException("{$where}: cannot become a command-line name. Use plain camelCase.");
             }
@@ -219,6 +297,7 @@ final class Introspector
 
             $type = $property->getType();
             $named = $type instanceof ReflectionNamedType ? $type : null;
+            $this->assertSupported($named, $type === null, $meta, $where);
 
             $globals[] = new ValueSpec(
                 phpName: $property->getName(),
