@@ -1,10 +1,6 @@
-# Overridable, because it lives outside this repo: a clone anywhere else still gets a Makefile
-# whose other targets work, and deps-update says why it is skipping rather than failing.
-SAFE_UPDATE_SCRIPT ?= $(HOME)/Working/dev-process/scripts/safe-update.php
-
 .PHONY: help \
         test lint ecs ecs-fix \
-        deps-audit deps-update \
+        deps-audit \
         check on-commit on-push \
         clean
 
@@ -29,12 +25,13 @@ ecs-fix: ## Coding standard, apply
 
 # ── Dependencies ─────────────────────────────────
 
+# No age-checked update target here: that checker lives outside this repo, and naming its path in a
+# versioned file makes the Makefile right on one machine and wrong in every clone. Two pinned
+# runtime requirements and three pinned dev ones are a tree to run the workspace tool AT, from
+# wherever it is installed — not a dependency this package takes on.
+
 deps-audit: ## Security audit (composer)
 	@composer audit
-
-deps-update: ## Age-checked dependency report (safe-update.php)
-	@test -f "$(SAFE_UPDATE_SCRIPT)" || { echo "skipped: $(SAFE_UPDATE_SCRIPT) not found (set SAFE_UPDATE_SCRIPT)"; exit 0; }; \
-	php "$(SAFE_UPDATE_SCRIPT)" --dir . || [ $$? -eq 1 ]   # exit 1 = findings (ok); 2 = tool error (fail)
 
 # ── Gates ────────────────────────────────────────
 
