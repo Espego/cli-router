@@ -11,15 +11,22 @@ require __DIR__ . '/../bootstrap.php';
 
 use Espego\CliRouter\BufferedOutput;
 use Espego\CliRouter\Arg;
+use Espego\CliRouter\CatchAs;
 use Espego\CliRouter\Cli;
 use Espego\CliRouter\Command;
 use Espego\CliRouter\CommandResult;
 use Espego\CliRouter\Commands;
 use Espego\CliRouter\DeclarationError;
+use Espego\CliRouter\HelpRenderer;
+use Espego\CliRouter\IntList;
 use Espego\CliRouter\Introspector;
 use Espego\CliRouter\Opt;
 use Espego\CliRouter\StreamOutput;
+use Espego\CliRouter\StringList;
+use Espego\CliRouter\Tests\DemoSet;
+use Espego\CliRouter\Tests\FileSet;
 use Espego\CliRouter\Tests\Mutates;
+use Espego\CliRouter\Tests\NoteTypeList;
 use Espego\CliRouter\UsageError;
 use Espego\CliRouter\WhenEmpty;
 use Espego\CliRouter\Tests\EdgeSet;
@@ -485,3 +492,599 @@ Assert::contains('Between 2 and 3 values.', $out->out);
 $out = new BufferedOutput();
 (new Espego\CliRouter\Tests\FileSet())->handle(['files.php', '--help'], $out);
 Assert::contains('Audit one or more files.', $out->out);
+
+// --- 20. A default is held to what a typed value meets (review finding 1) --------------------------
+//
+// The default never passes through the coercer, so introspection is the only place it can be asked
+// the questions an argument is asked. Two routes round that survived the last round: a list default
+// was asked what its elements ARE rather than what the list DECLARES, and a pattern was matched
+// against string defaults only — so `--n=1` was refused while `int $n = 1` sailed past it.
+
+/** @param callable(): object $make */
+function refuses(callable $make, string $expected): void
+{
+    Assert::exception(static fn() => (new Introspector())->set($make()), DeclarationError::class, $expected);
+}
+
+// Reported. Worse than "the command gets a string": IntList::first() is typed, so the string left
+// again as an uncaught TypeError raised by the consumer's own accessor.
+refuses(static fn() => new #[Cli('x')] class extends Commands {
+    #[Command('a')]
+    public function commandA(#[Opt('ids')] IntList $ids = new IntList(['wrong'])): CommandResult
+    {
+        return CommandResult::nothing();
+    }
+}, '~the default holds string where the list declares int~');
+
+// The other direction through the same predicate, and the enum branch of it — neither element is
+// the type its list promises, and neither used to be asked.
+refuses(static fn() => new #[Cli('x')] class extends Commands {
+    #[Command('a')]
+    public function commandA(#[Opt('t')] StringList $t = new StringList([1, 2])): CommandResult
+    {
+        return CommandResult::nothing();
+    }
+}, '~the default holds int where the list declares string~');
+
+refuses(static fn() => new #[Cli('x')] class extends Commands {
+    #[Command('a')]
+    public function commandA(#[Opt('c')] NoteTypeList $c = new NoteTypeList(['red'])): CommandResult
+    {
+        return CommandResult::nothing();
+    }
+}, '~the default holds string where the list declares~');
+
+// Reported: the pattern is matched against the raw argument before it becomes a number, so an
+// explicit --n=1 was refused while the declared default 1 was not looked at.
+refuses(static fn() => new #[Cli('x')] class extends Commands {
+    #[Command('a')]
+    public function commandA(#[Opt('n', pattern: '/^\d{2}$/u')] int $n = 1): CommandResult
+    {
+        return CommandResult::nothing();
+    }
+}, '~the default 1 does not match its own pattern~');
+
+// The same value arriving as a float, and as an element of a list — the coercer patterns both.
+refuses(static fn() => new #[Cli('x')] class extends Commands {
+    #[Command('a')]
+    public function commandA(#[Opt('f', pattern: '/^\d{2}$/u')] float $f = 1.5): CommandResult
+    {
+        return CommandResult::nothing();
+    }
+}, '~the default 1.5 does not match its own pattern~');
+
+refuses(static fn() => new #[Cli('x')] class extends Commands {
+    #[Command('a')]
+    public function commandA(#[Opt('ids', pattern: '/^\d{2}$/u')] IntList $ids = new IntList([1])): CommandResult
+    {
+        return CommandResult::nothing();
+    }
+}, '~the default element 1 does not match its own pattern~');
+
+// The accepted end, through the runtime rather than the gate: a correct list default reaches the
+// command as the elements its signature promises, and a pattern still admits what it was written
+// for — from the declaration and from argv alike.
+$defaults = new #[Cli('x', single: true)] class extends Commands {
+    #[Command('Report the defaults it was handed.')]
+    public function commandA(
+        #[Opt('ids', min: 1, minCount: 1)]
+        IntList $ids = new IntList([1, 2]),
+        #[Opt('year', pattern: '/^\d{4}$/u')]
+        int $year = 2026,
+    ): CommandResult {
+        return CommandResult::json(['ids' => $ids->all(), 'year' => $year]);
+    }
+};
+
+$out = new BufferedOutput();
+Assert::same(0, $defaults->handle(['x.php', '--year=2026'], $out));
+Assert::same(['ids' => [1, 2], 'year' => 2026], json_decode($out->out, true));
+
+// --- 21. A DeclarationError is nobody's considered no (review finding 2) ---------------------------
+//
+// #[CatchAs] exists so an upstream refusal can become an exit code. A DeclarationError is the
+// opposite: the consumer's own set is wrong, and it has to reach the first run as a fatal. Mapping
+// LogicException — a reasonable thing to map — turned CommandResult::nothing(999) into `error: …`
+// and exit 4: a broken declaration wearing the tidy refusal that #[CatchAs] exists not to hand out.
+
+$mapped = new #[Cli('x')] #[CatchAs(LogicException::class, exitCode: 4)] class extends Commands {
+    #[Command('An exit code the shell cannot carry.')]
+    public function commandA(): CommandResult
+    {
+        return CommandResult::nothing(999);
+    }
+
+    #[Command('A usage exit code that means success.')]
+    public function commandB(): CommandResult
+    {
+        $this->fail('nope', 0);
+    }
+
+    #[Command('A considered no from somewhere else.')]
+    public function commandC(): CommandResult
+    {
+        throw new DomainException('upstream said no');
+    }
+};
+
+Assert::exception(
+    static fn() => $mapped->handle(['x.php', 'a'], new BufferedOutput()),
+    DeclarationError::class,
+    'a command result exit code is 0-255, not 999.',
+);
+
+// The same swallow reached by another route: UsageError's own constructor refuses exit code 0.
+Assert::exception(
+    static fn() => $mapped->handle(['x.php', 'b'], new BufferedOutput()),
+    DeclarationError::class,
+    'a UsageError exit code is 1-255, not 0.',
+);
+
+// The accepted end: a genuine exception still maps, which is the whole point of #[CatchAs].
+$out = new BufferedOutput();
+Assert::same(4, $mapped->handle(['x.php', 'c'], $out));
+Assert::same("error: upstream said no\n", $out->err);
+
+// And naming it outright is refused where every other self-handled exception already was.
+refuses(static fn() => new #[Cli('x')] #[CatchAs(DeclarationError::class, exitCode: 4)] class extends Commands {
+    #[Command('a')]
+    public function commandA(): CommandResult
+    {
+        return CommandResult::nothing();
+    }
+}, '~which the runner handles itself~');
+
+// --- 22. A help request validates option names (review finding 3) ----------------------------------
+//
+// The positional branch was fixed in 16; the option branch still answered `save --help --bogus` with
+// the help and exit 0. Skipping required-ness and coercion is what makes --help useful on a command
+// whose options are mandatory — skipping the NAMES is how an unknown option becomes a silent no-op.
+
+$helped = new #[Cli('x')] class extends Commands {
+    #[Opt('Actually write.')]
+    public bool $confirm = false;
+
+    #[Command('Save something.')]
+    public function commandSave(#[Opt('What.')] string $what = 'x'): CommandResult
+    {
+        return CommandResult::nothing();
+    }
+};
+
+foreach ([['save', '--help', '--bogus'], ['--help', '--bogus']] as $argv) {
+    $out = new BufferedOutput();
+    Assert::same(1, $helped->handle(['x.php', ...$argv], $out), implode(' ', $argv));
+    Assert::same('', $out->out, implode(' ', $argv));
+    Assert::contains('unknown option --bogus', $out->err, implode(' ', $argv));
+}
+
+// A single set answers --help without naming a command, so it reaches the check by a third route.
+$only = new #[Cli('x', single: true)] class extends Commands {
+    #[Command('The only one.')]
+    public function commandOnly(#[Opt('Loudly.')] bool $verbose = false): CommandResult
+    {
+        return CommandResult::nothing();
+    }
+};
+
+$out = new BufferedOutput();
+Assert::same(1, $only->handle(['x.php', '--help', '--bogus'], $out));
+Assert::contains('unknown option --bogus', $out->err);
+
+// The accepted end: help still answers, still before the options it describes, and an option that
+// does exist is not in the way — including a global, which is what --help is usually typed beside.
+foreach ([['save', '--help'], ['save', '--help', '--confirm'], ['--help']] as $argv) {
+    $out = new BufferedOutput();
+    Assert::same(0, $helped->handle(['x.php', ...$argv], $out), implode(' ', $argv));
+    Assert::same('', $out->err, implode(' ', $argv));
+    Assert::contains('Save something.', $out->out, implode(' ', $argv));
+}
+
+$out = new BufferedOutput();
+Assert::same(0, $only->handle(['x.php', '--help', '--verbose'], $out));
+Assert::contains('The only one.', $out->out);
+
+// --- 23. Metadata that cannot be reached (review finding 4) ----------------------------------------
+//
+// Both read as configured and neither can do what it says: a gated global whose marker no command
+// carries is offered to nothing, and a heading declared twice lists its commands twice.
+
+refuses(static fn() => new #[Cli('x')] class extends Commands {
+    #[Opt('Actually write.', onlyWhen: Mutates::class)]
+    public bool $confirm = false;
+
+    #[Command('a')]
+    public function commandA(): CommandResult
+    {
+        return CommandResult::nothing();
+    }
+}, '~no #\[Command\] of this set carries~');
+
+refuses(static fn() => new #[Cli('x', groups: ['G', 'G'])] class extends Commands {
+    #[Command('a', group: 'G')]
+    public function commandA(): CommandResult
+    {
+        return CommandResult::nothing();
+    }
+}, "~declares 'G' twice~");
+
+// The sibling the review did not name: a heading nothing is filed under renders nothing at all, so
+// it is the same inert declaration with no output to give it away.
+refuses(static fn() => new #[Cli('x', groups: ['Used', 'Unused'])] class extends Commands {
+    #[Command('a', group: 'Used')]
+    public function commandA(): CommandResult
+    {
+        return CommandResult::nothing();
+    }
+}, "~declares 'Unused', which no~");
+
+refuses(static fn() => new #[Cli('x', groups: [''])] class extends Commands {
+    #[Command('a')]
+    public function commandA(): CommandResult
+    {
+        return CommandResult::nothing();
+    }
+}, '~empty heading~');
+
+// The accepted end: the shipped demo declares two headings and fills both, and gates a global on a
+// marker two of its commands carry. And "Other commands:" still catches a command that declares NO
+// group in a set that declares some — which is what that branch was written for. This case used to
+// reach it with a group name nobody declared; 27 refuses that, because it renders identically to
+// the ungrouped command below and so was never a second route to anything.
+Assert::contains('env', (new Introspector())->set(new DemoSet())->names());
+
+$other = new #[Cli('x', groups: ['Used'])] class extends Commands {
+    #[Command('a', group: 'Used')]
+    public function commandA(): CommandResult
+    {
+        return CommandResult::nothing();
+    }
+
+    #[Command('b')]
+    public function commandB(): CommandResult
+    {
+        return CommandResult::nothing();
+    }
+};
+
+$out = new BufferedOutput();
+Assert::same(0, $other->handle(['x.php', 'help'], $out));
+Assert::contains('Other commands:', $out->out);
+
+// --- 24. The overview accepts exactly what the overview prints (review finding 1) ------------------
+//
+// 22 taught the option branch to check option NAMES, and took every global as the set a named-less
+// help request may use. But a marker-gated global applies to some commands and not others, so the
+// overview help has always left it out — and the runner accepted it anyway. An option accepted where
+// the help that answers it does not mention it is the same silent no-op 22 was about, one level up.
+
+$gated = new #[Cli('x')] class extends Commands {
+    #[Opt('Print the raw response.')]
+    public bool $raw = false;
+
+    #[Opt('Actually write.', onlyWhen: Mutates::class)]
+    public bool $confirm = false;
+
+    #[Mutates]
+    #[Command('Write something.')]
+    public function commandWrite(): CommandResult
+    {
+        return CommandResult::nothing();
+    }
+
+    #[Command('Read something.')]
+    public function commandRead(): CommandResult
+    {
+        return CommandResult::nothing();
+    }
+};
+
+// Reported: the overview takes no command, so a gated option cannot apply to whatever runs.
+$out = new BufferedOutput();
+Assert::same(1, $gated->handle(['x.php', '--help', '--confirm'], $out));
+Assert::same('', $out->out);
+Assert::contains('unknown option --confirm', $out->err);
+
+// The three cells of the matrix that were already right, so the fix cannot have moved them: an
+// unconditional global on the overview, and the same gated one on a command page either side of its
+// marker.
+foreach ([['--help', '--raw'], ['write', '--help', '--confirm']] as $argv) {
+    $out = new BufferedOutput();
+    Assert::same(0, $gated->handle(['x.php', ...$argv], $out), implode(' ', $argv));
+    Assert::same('', $out->err, implode(' ', $argv));
+}
+
+$out = new BufferedOutput();
+Assert::same(1, $gated->handle(['x.php', 'read', '--help', '--confirm'], $out));
+Assert::contains("unknown option --confirm for 'read'", $out->err);
+
+// And the property behind all four, which holds whichever side is wrong: on the overview, an option
+// is accepted if and only if the overview's own help lists it.
+$overview = new BufferedOutput();
+$gated->handle(['x.php', '--help'], $overview);
+
+foreach (['raw', 'confirm'] as $name) {
+    $listed = str_contains($overview->out, "--{$name}");
+    $out = new BufferedOutput();
+    Assert::same(
+        $listed ? 0 : 1,
+        $gated->handle(['x.php', '--help', "--{$name}"], $out),
+        "--{$name} is " . ($listed ? 'listed' : 'not listed') . ' in the overview, so that is what it must do',
+    );
+}
+
+// --- 25. Metadata only the command list can render (review finding 4, continued) -------------------
+//
+// 23 refused a heading no command names. These are the rest of that class: a single set prints no
+// command list at all, so everything only the list reads is inert on one — and a heading whose
+// members are all hidden renders exactly as much as a heading nobody named.
+
+refuses(static fn() => new #[Cli('x', single: true, groups: ['G'])] class extends Commands {
+    #[Command('a', group: 'G')]
+    public function commandA(): CommandResult
+    {
+        return CommandResult::nothing();
+    }
+}, '~prints no command list, so groups would never be rendered~');
+
+// The same inert declaration reached through #[Command] instead of #[Cli].
+refuses(static fn() => new #[Cli('x', single: true)] class extends Commands {
+    #[Command('a', group: 'G')]
+    public function commandA(): CommandResult
+    {
+        return CommandResult::nothing();
+    }
+}, '~no command list to file it into~');
+
+refuses(static fn() => new #[Cli('x', single: true)] class extends Commands {
+    #[Command('a', hidden: true)]
+    public function commandA(): CommandResult
+    {
+        return CommandResult::nothing();
+    }
+}, '~no command list to leave it out of~');
+
+// Round 3 accepted this one, on the grounds that un-hiding the command would restore the heading.
+// That argument fits adding a command just as well, and the heading nobody names was refused in the
+// same commit — so the two were inconsistent rather than one of them being right.
+refuses(static fn() => new #[Cli('x', groups: ['Ghost', 'Real'])] class extends Commands {
+    #[Command('a', group: 'Ghost', hidden: true)]
+    public function commandA(): CommandResult
+    {
+        return CommandResult::nothing();
+    }
+
+    #[Command('b', group: 'Real')]
+    public function commandB(): CommandResult
+    {
+        return CommandResult::nothing();
+    }
+}, "~declares 'Ghost', which no listed~");
+
+// The accepted end: one visible member is enough to fill a heading, whatever is hidden beside it.
+$mixed = new #[Cli('x', groups: ['Mixed'])] class extends Commands {
+    #[Command('Hidden but dispatchable.', group: 'Mixed', hidden: true)]
+    public function commandA(): CommandResult
+    {
+        return CommandResult::nothing();
+    }
+
+    #[Command('Listed.', group: 'Mixed')]
+    public function commandB(): CommandResult
+    {
+        return CommandResult::nothing();
+    }
+};
+
+$out = new BufferedOutput();
+Assert::same(0, $mixed->handle(['x.php', 'help'], $out));
+Assert::contains('Mixed:', $out->out);
+Assert::notContains('Hidden but dispatchable.', $out->out);
+
+// And the shipped sets are untouched by any of it: one single with no list metadata, one multi whose
+// headings are named by visible commands.
+Assert::same(['run'], (new Introspector())->set(new FileSet())->names());
+Assert::contains('env', (new Introspector())->set(new DemoSet())->names());
+
+// --- 26. The Makefile names no path only one machine has (review finding 3) ------------------------
+//
+// It had a machine-local default for an external dependency checker, which read as a pass when the
+// checker was absent, then failed honestly, then was still a path that is wrong in every clone. The
+// answer was that this package does not owe that target at all — two pinned runtime requirements are
+// something to run a workspace tool AT, not a dependency to take on. Asserted like 4, on the file.
+
+$makefile = (string) file_get_contents(__DIR__ . '/../../Makefile');
+Assert::notContains('$(HOME)', $makefile);
+Assert::notContains('safe-update', $makefile);
+
+// The gate itself is unchanged — removing a target must not quietly remove a check from it.
+Assert::contains('check: lint ecs test deps-audit', $makefile);
+
+// --- 27. A group name is a closed set in BOTH directions (review finding 1) ------------------------
+//
+// 23 and 25 walked #[Cli(groups:)] and refused a heading nothing fills. Nothing ever walked the
+// commands, so a name that is not a heading was simply dropped — and with no groups declared at all
+// the first loop does not even run, which is the reported shape. Measured before the fix: such a
+// command renders BYTE-IDENTICALLY to one declaring no group, which is what makes the name inert
+// rather than merely misfiled, and is what reverses the "left accepted on purpose" call in 23.
+
+refuses(static fn() => new #[Cli('x')] class extends Commands {
+    #[Command('a', group: 'Typo')]
+    public function commandA(): CommandResult
+    {
+        return CommandResult::nothing();
+    }
+}, '~which declares none~');
+
+// The same name, now against headings that do exist: this is the typo the rule is really for, so
+// the message names what was declared.
+refuses(static fn() => new #[Cli('x', groups: ['Used'])] class extends Commands {
+    #[Command('a', group: 'Used')]
+    public function commandA(): CommandResult
+    {
+        return CommandResult::nothing();
+    }
+
+    #[Command('b', group: 'Nope')]
+    public function commandB(): CommandResult
+    {
+        return CommandResult::nothing();
+    }
+}, "~group 'Nope' is not one of #\[Cli\(groups:\)\] \(Used\)~");
+
+// And by case alone, which is the typo that reads as correct. Identifiers are case-sensitive here
+// as everywhere else.
+refuses(static fn() => new #[Cli('x', groups: ['Read'])] class extends Commands {
+    #[Command('a', group: 'Read')]
+    public function commandA(): CommandResult
+    {
+        return CommandResult::nothing();
+    }
+
+    #[Command('b', group: 'read')]
+    public function commandB(): CommandResult
+    {
+        return CommandResult::nothing();
+    }
+}, "~group 'read' is not one of~");
+
+// A hidden command is held to the same names — it cannot fill a heading (25), but it can still name
+// one that does not exist.
+refuses(static fn() => new #[Cli('x', groups: ['Real'])] class extends Commands {
+    #[Command('a', group: 'Real')]
+    public function commandA(): CommandResult
+    {
+        return CommandResult::nothing();
+    }
+
+    #[Command('b', group: 'Ghost', hidden: true)]
+    public function commandB(): CommandResult
+    {
+        return CommandResult::nothing();
+    }
+}, "~group 'Ghost' is not one of~");
+
+// The accepted end is asserted where that branch is: the rewritten case above 24, which reaches
+// "Other commands:" with a command that declares no group at all.
+
+// --- 28. A number the renderer cannot honour, and prose that says nothing (review finding 2) -------
+//
+// Measured across the flip point before the fix: width 0, 1, 20 and 44 all rendered a longest line
+// of 43, and 45 rendered 45 — because row() floors the text column at MIN_TEXT, so below
+// OPTION_GUTTER + MIN_TEXT the declared width moves nothing. A margin that reads as enforced and is
+// not is the same defect as a min/max the coercer never checks.
+
+refuses(static fn() => new #[Cli('x', width: 0)] class extends Commands {
+    #[Command('a')]
+    public function commandA(): CommandResult
+    {
+        return CommandResult::nothing();
+    }
+}, '~is under 45, the narrowest the help can be rendered at~');
+
+// One below the floor, which is the boundary that matters — 0 is obvious, 44 is not.
+refuses(static fn() => new #[Cli('x', width: 44)] class extends Commands {
+    #[Command('a')]
+    public function commandA(): CommandResult
+    {
+        return CommandResult::nothing();
+    }
+}, '~#\[Cli\(width: 44\)\] is under 45~');
+
+// The accepted end of that boundary: the floor itself is legal, and it is honoured — which is the
+// whole reason it is the floor. Asserted the way CanonicalHelpTest asserts the default width.
+//
+// The summaries here are deliberately short: a #[Cli] or #[Command] summary is the one prose field
+// the renderer prints VERBATIM — description goes through paragraph(), summary does not — so a long
+// one overruns the margin at any width, the default included. That is a rendering question and not
+// what this section is about; what is asserted is that the wrapped columns honour the declaration.
+$narrow = new #[Cli('Narrow.', width: HelpRenderer::MIN_WIDTH)] class extends Commands {
+    #[Command('Do a thing.', description: 'A description long enough that it has to wrap more than once at this width.')]
+    public function commandA(
+        #[Opt('An option whose description is long enough that it must wrap more than once here.')]
+        string $thing = 'x',
+    ): CommandResult {
+        return CommandResult::nothing();
+    }
+};
+
+$out = new BufferedOutput();
+Assert::same(0, $narrow->handle(['x.php', 'help', 'a'], $out));
+Assert::contains("\n", trim($out->out), 'the help must actually have wrapped something');
+foreach (explode("\n", $out->out) as $line) {
+    Assert::true(mb_strlen($line) <= HelpRenderer::MIN_WIDTH, 'line past the declared margin: ' . $line);
+}
+
+// The default has always been legal and stays so.
+Assert::same(92, (new Cli('x'))->width);
+Assert::contains('env', (new Introspector())->set(new DemoSet())->names());
+
+// Same class, second shape: a message only one WhenEmpty ever prints. Runner::empty() reads it in
+// the Error branch alone, so under Help or HelpFailed it is a sentence nothing can reach.
+refuses(static fn() => new #[Cli('x', single: true, onEmpty: WhenEmpty::Help, emptyMessage: 'never printed')] class extends Commands {
+    #[Command('a')]
+    public function commandA(): CommandResult
+    {
+        return CommandResult::nothing();
+    }
+}, '~printed only by WhenEmpty::Error, and onEmpty is WhenEmpty::Help~');
+
+// Paired correctly it is exactly what FileSet declares, and that has to keep working.
+Assert::same(['run'], (new Introspector())->set(new FileSet())->names());
+
+// Third shape: prose declared as nothing. The summary is the line #[Cli] exists to demand — its
+// absence already throws "A command set declares its own summary" — so declaring it blank is the
+// same omission wearing an argument.
+refuses(static fn() => new #[Cli('   ')] class extends Commands {
+    #[Command('a')]
+    public function commandA(): CommandResult
+    {
+        return CommandResult::nothing();
+    }
+}, '~summary is blank~');
+
+refuses(static fn() => new #[Cli('x')] class extends Commands {
+    #[Command('')]
+    public function commandA(): CommandResult
+    {
+        return CommandResult::nothing();
+    }
+}, '~summary is blank~');
+
+foreach ([
+    'before' => new #[Cli('x', before: '')] class extends Commands {
+        #[Command('a')]
+        public function commandA(): CommandResult
+        {
+            return CommandResult::nothing();
+        }
+    },
+    'description' => new #[Cli('x')] class extends Commands {
+        #[Command('a', description: '')]
+        public function commandA(): CommandResult
+        {
+            return CommandResult::nothing();
+        }
+    },
+] as $what => $set) {
+    Assert::exception(
+        static fn() => (new Introspector())->set($set),
+        DeclarationError::class,
+        "~{$what} is declared but blank~",
+    );
+}
+
+// The accepted end that this rule must NOT touch: #[Opt] and #[Arg] default their description to '',
+// and a bare #[Opt] is the fallback meta for a parameter carrying no attribute at all — so a blank
+// description there is ordinary, not a mistake.
+$terse = new #[Cli('x')] class extends Commands {
+    #[Command('a')]
+    public function commandA(
+        #[Opt]
+        string $s = '',
+        int $n = 1,
+    ): CommandResult {
+        return CommandResult::nothing();
+    }
+};
+Assert::same(['a'], (new Introspector())->set($terse)->names());

@@ -64,6 +64,21 @@ final class ValueSpec
     }
 
     /**
+     * The marker attribute a command must carry for this value to apply to it, or null for one that
+     * applies everywhere.
+     *
+     * Only a global can be gated, and only #[Opt] carries onlyWhen — but four places were spelling
+     * that out for themselves, and the runner's script-level help was the one that forgot to ask at
+     * all: it accepted a gated --confirm on an overview whose own help does not list it.
+     *
+     * @return class-string|null
+     */
+    public function gate(): ?string
+    {
+        return $this->meta instanceof Opt ? $this->meta->onlyWhen : null;
+    }
+
+    /**
      * The backed enum this value must become, if it is one.
      *
      * @return class-string<BackedEnum>|null

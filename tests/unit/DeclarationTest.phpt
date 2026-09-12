@@ -578,6 +578,9 @@ $ok = new #[Cli('x')] #[CatchAs(RuntimeException::class, exitCode: 4, format: 'r
 	#[Opt('A gated global.', onlyWhen: Mutates::class)]
 	public bool $confirm = false;
 
+	// The marker has to be carried by something: a gate no command passes through offers the
+	// option to nothing, and this fixture is what proves the accepted end is still accepted.
+	#[Mutates]
 	#[Command('a')]
 	public function commandA(
 		#[Opt('s')] string $s = '',
@@ -589,6 +592,8 @@ $ok = new #[Cli('x')] #[CatchAs(RuntimeException::class, exitCode: 4, format: 'r
 		#[Opt('n', minCount: 1, maxCount: 3)] ?NoteTypeList $n = null,
 		#[Opt('d')] ?DateTimeImmutable $d = null,
 		#[Opt('p', pattern: '/^\d{4}$/u')] string $p = '2026',
+		#[Opt('y', pattern: '/^\d{4}$/u')] int $y = 2026,
+		#[Opt('ids', min: 1, minCount: 1)] IntList $ids = new IntList([1, 2]),
 		#[Arg('rest', minCount: 1)] string ...$rest,
 	): CommandResult {
 		return CommandResult::nothing();

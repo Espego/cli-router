@@ -54,6 +54,12 @@ final class Runner
 
             $topic = $this->helpTopic($set, $args, $opts);
             if ($topic !== false) {
+                // A help request skips required-ness and coercion — that is what lets --help answer
+                // for a command whose options are mandatory — but not the option NAMES. Without
+                // this, `save --help --bogus` printed the help and exited 0: the malformed-help
+                // defect in its last costume, an answer to a question nobody asked, called success.
+                $this->assertKnownOptions($set, $this->helpSubject($set, $topic), $opts, $program);
+
                 $output->out($this->help->render($set, $topic, $program));
 
                 return 0;
@@ -125,6 +131,14 @@ final class Runner
             $output->err('internal error: ' . self::safe($e->getMessage()) . "\n");
 
             return self::EXIT_INTERNAL;
+        } catch (DeclarationError $e) {
+            // Nothing catches this one — it names a symbol in the consumer's own command set and
+            // must reach the first run as a fatal. #[CatchAs(DeclarationError::class)] is refused at
+            // introspection, but a mapping of any ANCESTOR (LogicException, Exception) would
+            // otherwise reach it here and report `CommandResult::nothing(999)` as that mapping's
+            // considered no — an exit code the declaration never chose, from a declaration that
+            // cannot work.
+            throw $e;
         } catch (Throwable $e) {
             $mapped = $set->catchFor($e);
             if ($mapped === null) {
@@ -292,21 +306,34 @@ final class Runner
         return $set->get($name);
     }
 
+    /** Whose options a help request is measured against: the command it describes, or the set. */
+    private function helpSubject(SetInfo $set, ?string $topic): ?CommandInfo
+    {
+        if ($topic !== null) {
+            return $set->get($topic);
+        }
+
+        return $set->meta->single ? $set->only() : null;
+    }
+
     /**
      * An option the command does not take is an error, never a no-op.
      *
      * A filter that silently fails to apply returns everything — which is exactly what a filter
      * matching everything returns, so there is nothing in the output to notice.
      *
+     * @param CommandInfo|null $command Null for script-level help on a multi-command set, where no
+     *     command has been named — so only the globals that apply to every one of them are offered,
+     *     which is exactly the set the overview help prints.
      * @param array<string, string|true> $opts
      */
-    private function assertKnownOptions(SetInfo $set, CommandInfo $command, array $opts, string $program): void
+    private function assertKnownOptions(SetInfo $set, ?CommandInfo $command, array $opts, string $program): void
     {
         $accepted = ['help'];
-        foreach ($command->options() as $option) {
+        foreach ($command?->options() ?? [] as $option) {
             $accepted[] = $option->cliName;
         }
-        foreach ($set->globalsFor($command) as $global) {
+        foreach ($command === null ? $set->unconditionalGlobals() : $set->globalsFor($command) as $global) {
             $accepted[] = $global->cliName;
         }
 
@@ -321,7 +348,7 @@ final class Runner
             'unknown option%s %s%s. Accepted: %s. Run: %s',
             count($unknown) === 1 ? '' : 's',
             implode(', ', array_map(static fn (string $o): string => '--' . $o, $unknown)),
-            $set->meta->single ? '' : " for '{$command->name}'",
+            $set->meta->single || $command === null ? '' : " for '{$command->name}'",
             implode(', ', array_map(static fn (string $o): string => '--' . $o, $accepted)),
             $set->meta->single ? $program . ' --help' : $program . ' help',
         ));

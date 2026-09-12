@@ -21,6 +21,17 @@ final class HelpRenderer
 {
     private const OPTION_GUTTER = 25;
 
+    /** The narrowest text column row() will produce, whatever width it is handed. */
+    private const MIN_TEXT = 20;
+
+    /**
+     * The narrowest width this renderer can honour.
+     *
+     * Below it every option row is OPTION_GUTTER + MIN_TEXT wide regardless, so a declaration
+     * asking for less is a number nothing reads — which is why the introspector refuses one.
+     */
+    public const MIN_WIDTH = self::OPTION_GUTTER + self::MIN_TEXT;
+
     private const MIN_COMMAND_GUTTER = 24;
 
     private const MAX_COMMAND_GUTTER = 40;
@@ -63,10 +74,7 @@ final class HelpRenderer
             // Only the globals that apply everywhere. One gated by a marker attribute applies to
             // some commands and not others, so listing it here states something untrue of most of
             // them; it belongs in the help of the commands that actually take it.
-            $options = array_values(array_filter(
-                $set->globals,
-                static fn (ValueSpec $g): bool => ! $g->meta instanceof Opt || $g->meta->onlyWhen === null,
-            ));
+            $options = $set->unconditionalGlobals();
         }
 
         $out .= "\n" . $this->optionList($options, $set->meta->width);
@@ -188,7 +196,7 @@ final class HelpRenderer
         $synopsis = $parts === [] ? '  ' . $command->name : $this->hanging($head, $parts, $width);
 
         $out = $synopsis . "\n";
-        foreach ($this->wrap($command->meta->summary, max(20, $width - $gutter)) as $line) {
+        foreach ($this->wrap($command->meta->summary, max(self::MIN_TEXT, $width - $gutter)) as $line) {
             $out .= str_repeat(' ', $gutter) . $line . "\n";
         }
 
@@ -324,7 +332,7 @@ final class HelpRenderer
     private function row(string $label, string $text, int $gutter, int $width): string
     {
         $indent = str_repeat(' ', $gutter);
-        $lines = $this->wrap($text, max(20, $width - $gutter));
+        $lines = $this->wrap($text, max(self::MIN_TEXT, $width - $gutter));
 
         if (mb_strlen($label) + 2 > $gutter - 1) {
             $out = '  ' . $label . "\n";

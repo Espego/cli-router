@@ -53,10 +53,24 @@ final class SetInfo
     public function globalsFor(CommandInfo $command): array
     {
         return array_values(array_filter($this->globals, static function (ValueSpec $g) use ($command): bool {
-            $onlyWhen = $g->meta instanceof Opt ? $g->meta->onlyWhen : null;
+            $gate = $g->gate();
 
-            return $onlyWhen === null || $command->marked($onlyWhen);
+            return $gate === null || $command->marked($gate);
         }));
+    }
+
+    /**
+     * Globals that apply whatever is run — the only ones a multi-command overview can speak for,
+     * since no command has been named there and a gated one is untrue of most of them.
+     *
+     * The help prints this set and the runner accepts this set. They were two filters, and the one
+     * that was missing let `--help --confirm` pass with a help text that does not mention --confirm.
+     *
+     * @return list<ValueSpec>
+     */
+    public function unconditionalGlobals(): array
+    {
+        return array_values(array_filter($this->globals, static fn (ValueSpec $g): bool => $g->gate() === null));
     }
 
     public function catchFor(Throwable $e): ?CatchAs

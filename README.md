@@ -182,8 +182,31 @@ whose format is not one `%s`, that names something the runner has already handle
 faults rather than a considered no — `Throwable` and the engine's `Error`s stay uncaught, because a
 `TypeError` turned into a tidy exit code is a broken deployment reading as a clean refusal.
 
+Two more classes go the same way. A default is held to everything a typed value meets, so a list
+default whose elements are not the type the list declares is refused — PHP checks only the list
+class, never its contents — and so is a numeric default its own `pattern` would reject, since the
+pattern is matched before a value becomes a number and `#[Opt(pattern: '/^\d{2}$/u')] int $n = 1`
+must agree with an explicit `--n=1`.
+
+And metadata that cannot be reached is refused rather than left reading as configured. A global
+gated on a marker no `#[Command]` carries applies to nothing. Group names are a closed set in both
+directions: a `#[Cli(groups:)]` heading that is empty, repeated, or that no LISTED command fills,
+and a `#[Command(group:)]` naming a heading that was never declared — the latter renders identically
+to declaring no group at all, so the name does nothing. A `#[Cli(single: true)]` set prints no
+command list, which makes `groups`, `group:` and `hidden:` inert on one. `emptyMessage` is printed
+only by `WhenEmpty::Error`. A `width` under `HelpRenderer::MIN_WIDTH` moves nothing, because every
+row is the gutter plus a minimum text column wide whatever the declaration asks for. And prose
+declared as the empty string — a summary, `before`, `after`, `description` — contributes a blank
+line where a sentence was promised; `#[Opt]` and `#[Arg]` descriptions are exempt, since blank is
+their default and a bare `#[Opt]` is what an unattributed parameter gets.
+
+A `DeclarationError` itself is never mapped. `#[CatchAs]` naming it is refused, and one raised at
+runtime — `CommandResult::nothing(999)`, `fail('…', 0)` — is rethrown past any mapping of an
+ancestor such as `LogicException`: the set is wrong, and that has to reach the first run as a fatal.
+
 The refusals are the point of the package rather than a safety net around it, so they carry a test
-each: `tests/unit/DeclarationTest.phpt`.
+each: `tests/unit/DeclarationTest.phpt`, and `tests/unit/RegressionTest.phpt` for the ones a review
+found, numbered to the round that found them.
 
 ## Things it deliberately does not do
 

@@ -41,7 +41,7 @@ final class Introspector
      *
      * @var list<class-string<Throwable>>
      */
-    private const HANDLED = [UsageError::class, Stop::class, InternalError::class];
+    private const HANDLED = [UsageError::class, Stop::class, InternalError::class, DeclarationError::class];
 
     public function set(object $set): SetInfo
     {
@@ -66,6 +66,11 @@ final class Introspector
                 implode(', ', array_keys($commands)),
             ));
         }
+
+        $this->assertNothingToList($cli, $commands, $class->getName());
+        $this->assertGroups($cli, $commands, $class->getName());
+        $this->assertMarkersReachable($globals, $commands, $class->getName());
+        $this->assertRenderable($cli, $commands, $class->getName());
 
         if ($cli->onEmpty === WhenEmpty::Run) {
             $this->assertRunnableEmpty($cli, $commands, $class->getName());
@@ -97,6 +102,197 @@ final class Introspector
                     $spec->positional ? '<' . $spec->placeholder() . '>' : '--' . $spec->cliName,
                 ));
             }
+        }
+    }
+
+    /**
+     * A single set renders no command list, so everything only the list reads is inert on one.
+     *
+     * `groups` order a listing that never happens, `group:` files a command into a heading that is
+     * never printed, and `hidden:` leaves a command out of a list it was never going to appear in —
+     * each of them configured, each of them doing nothing, on the one shape of set where the help
+     * prints the command's own prose instead.
+     *
+     * @param array<string, CommandInfo> $commands
+     */
+    private function assertNothingToList(Cli $cli, array $commands, string $where): void
+    {
+        if (! $cli->single) {
+            return;
+        }
+
+        if ($cli->groups !== []) {
+            throw new DeclarationError(
+                "{$where}: #[Cli(single: true)] prints no command list, so groups would never be rendered."
+            );
+        }
+
+        foreach ($commands as $command) {
+            $method = $command->method->getName();
+
+            if ($command->meta->group !== null) {
+                throw new DeclarationError(sprintf(
+                    "%s::%s(): group '%s' on a #[Cli(single: true)] set, which prints no command list to file it into.",
+                    $where,
+                    $method,
+                    $command->meta->group,
+                ));
+            }
+            if ($command->meta->hidden) {
+                throw new DeclarationError(
+                    "{$where}::{$method}(): hidden on a #[Cli(single: true)] set, which prints no command list "
+                    . 'to leave it out of.'
+                );
+            }
+        }
+    }
+
+    /**
+     * A heading nothing is filed under prints nothing at all, and one declared twice prints its
+     * commands twice. Both read as configured and neither does what it says.
+     *
+     * Only a VISIBLE command counts as filling a heading. A group whose members are all hidden
+     * renders exactly as much as one no command names — nothing — and the previous round refused
+     * the second while accepting the first, on the grounds that un-hiding would restore it. That
+     * argument fits adding a command just as well; the inconsistency was the defect.
+     *
+     * Note what is NOT refused: a #[Command(group:)] naming a heading #[Cli(groups:)] never
+     * declared. The renderer files those under 'Other commands:' on purpose, so they are listed
+     * and dispatchable — wrong-looking, but not inert.
+     *
+     * @param array<string, CommandInfo> $commands
+     */
+    private function assertGroups(Cli $cli, array $commands, string $where): void
+    {
+        $listed = array_filter(array_values($commands), static fn (CommandInfo $c): bool => ! $c->meta->hidden);
+        $used = array_map(static fn (CommandInfo $c): ?string => $c->meta->group, $listed);
+
+        $seen = [];
+        foreach ($cli->groups as $group) {
+            if (trim($group) === '') {
+                throw new DeclarationError("{$where}: #[Cli(groups:)] holds an empty heading.");
+            }
+            if (in_array($group, $seen, true)) {
+                throw new DeclarationError(
+                    "{$where}: #[Cli(groups:)] declares '{$group}' twice, so its commands would be listed twice."
+                );
+            }
+            if (! in_array($group, $used, true)) {
+                throw new DeclarationError(
+                    "{$where}: #[Cli(groups:)] declares '{$group}', which no listed #[Command(group:)] names."
+                );
+            }
+
+            $seen[] = $group;
+        }
+
+        // The other direction, which nothing asked until now: a name that is not one of the
+        // headings is dropped, and `groups: []` skips the loop above entirely so nothing looked at
+        // all. Measured: such a command renders byte-identically to one declaring no group.
+        foreach ($commands as $command) {
+            $group = $command->meta->group;
+            if ($group === null || in_array($group, $cli->groups, true)) {
+                continue;
+            }
+
+            throw new DeclarationError(sprintf(
+                "%s::%s(): group '%s' is not one of #[Cli(groups:)] (%s), so it would be ignored — a command "
+                . 'with no group at all is listed the same way.',
+                $where,
+                $command->method->getName(),
+                $group,
+                $cli->groups === [] ? 'which declares none' : implode(', ', $cli->groups),
+            ));
+        }
+    }
+
+    /**
+     * What the help renderer reads must be something it can render.
+     *
+     * A width below what the renderer can honour reads as a margin and moves nothing; a message only
+     * one WhenEmpty prints is never printed under the others; and prose declared as the empty string
+     * contributes a blank line where a sentence was promised. All three are the same defect as an
+     * unreachable group heading — a declaration that looks configured and does nothing.
+     *
+     * @param array<string, CommandInfo> $commands
+     */
+    private function assertRenderable(Cli $cli, array $commands, string $where): void
+    {
+        if ($cli->width < HelpRenderer::MIN_WIDTH) {
+            throw new DeclarationError(sprintf(
+                '%s: #[Cli(width: %d)] is under %d, the narrowest the help can be rendered at. Every row is '
+                . 'that wide whatever the declaration asks for.',
+                $where,
+                $cli->width,
+                HelpRenderer::MIN_WIDTH,
+            ));
+        }
+
+        if ($cli->emptyMessage !== null && $cli->onEmpty !== WhenEmpty::Error) {
+            throw new DeclarationError(sprintf(
+                '%s: emptyMessage is printed only by WhenEmpty::Error, and onEmpty is WhenEmpty::%s.',
+                $where,
+                $cli->onEmpty->name,
+            ));
+        }
+
+        $this->assertText($cli->summary, 'summary', $where, true);
+        $this->assertText($cli->before, 'before', $where);
+        $this->assertText($cli->after, 'after', $where);
+        $this->assertText($cli->emptyMessage, 'emptyMessage', $where);
+
+        foreach ($commands as $command) {
+            $at = $where . '::' . $command->method->getName() . '()';
+            $this->assertText($command->meta->summary, 'summary', $at, true);
+            $this->assertText($command->meta->description, 'description', $at);
+        }
+    }
+
+    /**
+     * Prose that is declared has to say something.
+     *
+     * Only what a declaration states explicitly: #[Opt] and #[Arg] default their description to '',
+     * and a bare #[Opt] is the fallback for an unattributed parameter, so blank is ordinary there
+     * rather than a mistake — which is why this is never asked of one.
+     */
+    private function assertText(?string $text, string $what, string $where, bool $required = false): void
+    {
+        if ($text === null || trim($text) !== '') {
+            return;
+        }
+
+        throw new DeclarationError($required
+            ? "{$where}: {$what} is blank, and it is the one line the help must carry."
+            : "{$where}: {$what} is declared but blank. Omit it rather than asking for an empty line.");
+    }
+
+    /**
+     * onlyWhen is asked of each command in turn, so a marker no command carries gates the option
+     * out of every one of them — declared, documented in the help of nothing, and unreachable.
+     *
+     * @param list<ValueSpec> $globals
+     * @param array<string, CommandInfo> $commands
+     */
+    private function assertMarkersReachable(array $globals, array $commands, string $where): void
+    {
+        foreach ($globals as $global) {
+            $marker = $global->gate();
+            if ($marker === null) {
+                continue;
+            }
+
+            foreach ($commands as $command) {
+                if ($command->marked($marker)) {
+                    continue 2;
+                }
+            }
+
+            throw new DeclarationError(sprintf(
+                '%s::$%s: onlyWhen names %s, which no #[Command] of this set carries. The option could never apply.',
+                $where,
+                $global->phpName,
+                $marker,
+            ));
         }
     }
 
@@ -531,11 +727,12 @@ final class Introspector
                 "{$where}: required applies to a variadic. A positional is required unless it has a default."
             );
         }
-        if ($meta instanceof Opt && $meta->onlyWhen !== null) {
+        $gate = $spec->gate();
+        if ($gate !== null) {
             if ($spec->property === null) {
                 throw new DeclarationError("{$where}: onlyWhen applies to a global, not to a command parameter.");
             }
-            $this->assertMarker($meta->onlyWhen, $where);
+            $this->assertMarker($gate, $where);
         }
 
         if ($meta->pattern !== null && ($element === 'bool' || $this->isEnum($element))) {
@@ -643,44 +840,97 @@ final class Introspector
             }
         }
 
-        if (is_string($default) && ! Constraints::matchesPattern($meta->pattern, $default)) {
-            throw new DeclarationError("{$where}: the default '{$default}' does not match its own pattern.");
+        $this->assertMatches($default, $meta, 'default', $where);
+
+        $list = $spec->listClass();
+        if ($list === null || ! $default instanceof ValueList) {
+            return;
         }
 
-        if ($default instanceof ValueList) {
-            $count = count($default);
-            if (! Constraints::atLeast($count, $meta->minCount) || ! Constraints::atMost($count, $meta->maxCount)) {
-                throw new DeclarationError(sprintf(
-                    '%s: the default holds %d elements, outside the minCount/maxCount the same declaration sets.',
-                    $where,
-                    $count,
-                ));
-            }
+        $count = count($default);
+        if (! Constraints::atLeast($count, $meta->minCount) || ! Constraints::atMost($count, $meta->maxCount)) {
+            throw new DeclarationError(sprintf(
+                '%s: the default holds %d elements, outside the minCount/maxCount the same declaration sets.',
+                $where,
+                $count,
+            ));
+        }
 
-            // Counting them is not checking them: IntList([0]) under min: 1 used to pass, because
-            // cardinality was the only thing a list default was asked about.
-            foreach ($default as $element) {
-                $this->assertElement($element, $meta, $where);
-            }
+        // Counting them is not checking them: IntList([0]) under min: 1 used to pass, because
+        // cardinality was the only thing a list default was asked about. The type comes from the
+        // declared list, never from the element in hand — see assertElement().
+        $element = $list::elementType();
+        foreach ($default as $value) {
+            $this->assertElement($value, $element, $meta, $where);
         }
     }
 
-    /** One element of a list default, held to what a typed element of the same list would meet. */
-    private function assertElement(mixed $element, Param $meta, string $where): void
+    /**
+     * One element of a list default, held to what a typed element of the same list would meet.
+     *
+     * The type comes from the LIST, not from the element in hand. Asking the element what it is and
+     * then applying that type's rules is how `new IntList(['wrong'])` passed: it was a string, so it
+     * was asked the string questions, and the declared `int` was never consulted at all.
+     *
+     * @param 'string'|'int'|'float'|class-string<BackedEnum> $type
+     */
+    private function assertElement(mixed $value, string $type, Param $meta, string $where): void
     {
-        if ((is_int($element) || is_float($element))
-            && (! Constraints::atLeast($element, $meta->min) || ! Constraints::atMost($element, $meta->max))
+        if (! Constraints::isElement($type, $value)) {
+            throw new DeclarationError(sprintf(
+                '%s: the default holds %s where the list declares %s.',
+                $where,
+                get_debug_type($value),
+                $type,
+            ));
+        }
+
+        if ((is_int($value) || is_float($value))
+            && (! Constraints::atLeast($value, $meta->min) || ! Constraints::atMost($value, $meta->max))
         ) {
             throw new DeclarationError(sprintf(
                 '%s: the default element %s is outside the min/max the same declaration sets.',
                 $where,
-                (string) $element,
+                (string) $value,
             ));
         }
 
-        if (is_string($element) && ! Constraints::matchesPattern($meta->pattern, $element)) {
-            throw new DeclarationError("{$where}: the default element '{$element}' does not match its own pattern.");
+        $this->assertMatches($value, $meta, 'default element', $where);
+    }
+
+    /**
+     * A declared value, held to the pattern an argument of the same declaration would meet.
+     *
+     * The pattern is applied to the RAW argument, before it becomes a number — Coercer::integer()
+     * and float() both match it first — so a numeric default has to answer for its string form too.
+     * `#[Opt(pattern: '/^\d{2}$/u')] int $n = 1` used to pass while an explicit `--n=1` was refused,
+     * which is the declaration and the runtime disagreeing about the same value.
+     *
+     * The form tested is quoted back, because a float has no single spelling: (string) 1.0 is '1'.
+     */
+    private function assertMatches(mixed $value, Param $meta, string $label, string $where): void
+    {
+        if ($meta->pattern === null || (! is_string($value) && ! is_int($value) && ! is_float($value))) {
+            return;
         }
+
+        $text = (string) $value;
+        if (Constraints::matchesPattern($meta->pattern, $text)) {
+            return;
+        }
+
+        // The tested form is spelled out only where it differs from the declared one, which for a
+        // float it can: (string) 1.0 is '1', and a pattern wanting a decimal point then refuses a
+        // default someone could have typed as 1.0.
+        $shown = is_string($value) ? "'{$text}'" : var_export($value, true);
+
+        throw new DeclarationError(sprintf(
+            '%s: the %s %s%s does not match its own pattern.',
+            $where,
+            $label,
+            $shown,
+            $shown === $text || $shown === "'{$text}'" ? '' : " (as '{$text}')",
+        ));
     }
 
     /**

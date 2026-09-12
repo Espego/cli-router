@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Espego\CliRouter;
 
+use BackedEnum;
+
 /**
  * The predicates behind the declared constraints, in one place.
  *
@@ -49,5 +51,28 @@ final class Constraints
         }
 
         return $matched === 1;
+    }
+
+    /**
+     * Is this value one a list of the declared element type could hold?
+     *
+     * A list default is written by hand, and PHP checks only the list CLASS: `new IntList(['x'])`
+     * compiles, introspection saw a string element and asked it the string questions, and the
+     * command received a string where its own signature says int — an uncaught TypeError as soon
+     * as the list's own accessor returned it. The declared element type is the only thing that can
+     * hold such a default to what a typed element will be.
+     *
+     * int satisfies float, as it does for a float parameter in Coercer::mismatches().
+     *
+     * @param 'string'|'int'|'float'|class-string<BackedEnum> $element
+     */
+    public static function isElement(string $element, mixed $value): bool
+    {
+        return match ($element) {
+            'string' => is_string($value),
+            'int' => is_int($value),
+            'float' => is_float($value) || is_int($value),
+            default => $value instanceof $element,
+        };
     }
 }
