@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Espego\CliRouter\Examples;
+namespace Espego\CliRouter\Tests\Documentation;
 
 /**
  * A backed enum validates itself and prints its own `Allowed:` list, so neither the body nor the

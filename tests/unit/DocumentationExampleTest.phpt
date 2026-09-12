@@ -3,24 +3,20 @@
 declare(strict_types=1);
 
 /**
- * The three ways a command set is worth testing. Copy this next to your own set.
- *
- * Two lines need changing when you do: the require below — in your project it is your own
- * bootstrap or `vendor/autoload.php` — and the namespace of the set under test.
+ * The three ways a command set is worth testing. The distributed worked example copies this exact
+ * source as a pattern: consumers adapt its bootstrap, imports, fixtures, commands and assertions.
  */
 
-require __DIR__ . '/../vendor/autoload.php';
+require __DIR__ . '/../bootstrap.php';
 
 use Espego\CliRouter\BufferedOutput;
-use Espego\CliRouter\Examples\NoteSet;
-use Espego\CliRouter\Examples\NoteStore;
-use Espego\CliRouter\Examples\Priority;
 use Espego\CliRouter\StringList;
+use Espego\CliRouter\Tests\Documentation\NoteSet;
+use Espego\CliRouter\Tests\Documentation\NoteStore;
+use Espego\CliRouter\Tests\Documentation\Priority;
 use Tester\Assert;
 
-Tester\Environment::setup();
-
-/** A store the test seeded itself, so nothing depends on the shipped sample data. */
+/** Explicit test data, so this case depends on no hidden or shared fixture state. */
 function set(): NoteSet
 {
 	return new NoteSet(new NoteStore([
@@ -103,7 +99,7 @@ Assert::contains('"detail": "Before October."', $out);
 [$code, $out, $err] = cli('help');
 Assert::same(0, $code);
 Assert::same('', $err, 'help belongs on stdout, so `--help | less` works');
-Assert::matchFile(__DIR__ . '/NoteSetHelp.expect', $out);
+Assert::matchFile(__DIR__ . '/DocumentationExampleHelp.expect', $out);
 
 // `help` and `--help` are the same page.
 Assert::same($out, cli('--help')[1]);

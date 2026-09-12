@@ -11,8 +11,8 @@ return ECSConfig::configure()
     ->withPreparedSets(common: true, psr12: true)
     ->withPaths([
         __DIR__ . '/src',
-        __DIR__ . '/examples',
         __DIR__ . '/tests',
+        __DIR__ . '/tools',
     ])
     ->withSkip([
         Symplify\CodingStandard\Fixer\Spacing\MethodChainingNewlineFixer::class,

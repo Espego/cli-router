@@ -3,7 +3,7 @@ parameters:
 
 	paths:
 		- src
-		- examples
 		- tests/fixtures
+		- tools
 
 	treatPhpDocTypesAsCertain: false

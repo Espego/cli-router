@@ -1,5 +1,5 @@
 .PHONY: help \
-        test lint ecs ecs-fix \
+        test lint ecs ecs-fix docs docs-check dist-check \
         deps-audit \
         check on-commit on-push \
         clean
@@ -11,8 +11,8 @@ help: ## Show available targets
 
 # ── Checks ───────────────────────────────────────
 
-test: ## Unit tests (nette/tester, tests/unit and the shipped example)
-	@vendor/bin/tester -C tests/unit examples -s
+test: ## Unit tests (nette/tester, tests/unit)
+	@vendor/bin/tester -C tests/unit -s
 
 lint: ## Static analysis (PHPStan level max)
 	@vendor/bin/phpstan analyse --memory-limit=512M
@@ -22,6 +22,15 @@ ecs: ## Coding standard, check only
 
 ecs-fix: ## Coding standard, apply
 	@vendor/bin/ecs check --fix
+
+docs: ## Refresh generated documentation blocks
+	@php tools/update-docs.php
+
+docs-check: ## Refuse documentation that drifted from its tested source
+	@php tools/update-docs.php --check
+
+dist-check: ## Allow only runtime code and documentation into the release archive
+	@php tools/check-distribution.php
 
 # ── Dependencies ─────────────────────────────────
 
@@ -35,14 +44,14 @@ deps-audit: ## Security audit (composer)
 
 # ── Gates ────────────────────────────────────────
 
-check: lint ecs test deps-audit ## Everything a change has to pass
+check: lint ecs docs-check test deps-audit ## Everything a change has to pass
 
 on-commit: check ## Pre-commit gate
 
-on-push: check ## Push gate (adds manifest validation)
+on-push: check dist-check ## Push gate (adds manifest and release-archive validation)
 	@composer validate --strict
 
 # ── Housekeeping ─────────────────────────────────
 
 clean: ## Remove test artefacts
-	@rm -rf tests/unit/output examples/output
+	@rm -rf tests/unit/output

@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Espego\CliRouter\Examples;
+namespace Espego\CliRouter\Tests\Documentation;
 
 use Espego\CliRouter\Arg;
 use Espego\CliRouter\CatchAs;
@@ -17,8 +17,8 @@ use Espego\CliRouter\StringList;
  * A worked example: a dispatching set with a read half, a gated write half, and one mapped
  * exception. Copy it and change the domain.
  *
- * It is also the fixture of `NoteSetTest.phpt`, which the package's own `make test` runs — so
- * every claim the guide makes about this file is asserted on every build.
+ * The package's own test suite runs this class. The documentation generator copies this exact
+ * source into the distributed worked example.
  */
 #[Cli(
     summary: 'Keep a short list of notes.',

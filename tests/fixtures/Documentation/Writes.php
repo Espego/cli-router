@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Espego\CliRouter\Examples;
+namespace Espego\CliRouter\Tests\Documentation;
 
 use Attribute;
 

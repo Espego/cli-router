@@ -5,11 +5,10 @@ the design rules, what the package refuses and why, and the places where the obv
 wrong.
 
 Nothing here restates the reference. Where a fact lives in the code, this points at it — so the
-`src/` paths below are worth opening; they are in the installed package. So is `examples/`, which
-is the worked version of everything here: a complete set, its help snapshot, and a test to copy.
-Only `tests/` is missing from an installed copy — `.gitattributes` keeps it out of the distribution
-archive — so it is named below only to say what the package asserts about itself, never as
-something for you to open.
+`src/` paths below are worth opening; they are in the installed package. The separately shipped
+`docs/worked-example.md` contains a complete set, its help snapshot, and a canonical test pattern.
+Its code blocks are generated from fixtures the package tests, while those fixtures and all other
+development files stay out of the distribution archive.
 
 ## 1. One command, or several?
 
@@ -38,7 +37,7 @@ introspection, so it cannot be declared where it could only ever produce a usage
 - **A global** (`#[Opt]` on a public property) is for a flag belonging to the *script* rather than
   to one command — `--raw`, `--confirm`. Gate it with `onlyWhen:` to a marker attribute rather than
   repeating the option on every write command; `src/Opt.php` documents it where it is declared, and
-  `examples/NoteSet.php` with `examples/Writes.php` has it wired up end to end.
+  `docs/worked-example.md` has it wired up end to end.
 
 ## 3. Push meaning into the type
 
@@ -117,13 +116,14 @@ introspection, and so is mapping a `DeclarationError`.
 
 ## 7. Test it three ways
 
-`examples/NoteSetTest.phpt` is all three, on a set small enough to read in one sitting. Copy it
-next to your own set; its own docblock names the two lines that have to change when you do.
+The canonical test pattern in `docs/worked-example.md` demonstrates all three on one set. Treat it
+as a structure to adapt: replace its bootstrap, imports, fixtures, commands and assertions with
+your project's own, keeping the three levels of coverage.
 
 1. **The body**, called directly with named arguments — no process, no argv.
 2. **The whole CLI**, via `handle()` with a `BufferedOutput`, asserting the exit code and the two
    streams separately.
-3. **The help, byte for byte**, against a checked-in file — `examples/NoteSetHelp.expect`. A
+3. **The help, byte for byte**, against a checked-in file. The worked example includes one. A
    substring assertion is not a substitute: it passes just as happily when a command has silently
    vanished or a column has moved.
 
@@ -160,7 +160,7 @@ Each of these was measured, and each is asserted in the package's own regression
 
   So the empty string in row one means **not** given, not "given, and empty" — without `allowEmpty`
   it is the only way `''` can arrive. `allowEmpty` alone lets the value through but does not make it
-  distinguishable; only the nullable declaration answers both questions. `examples/NoteSet.php`'s
+  distinguishable; only the nullable declaration answers both questions. The worked example's
   `--detail` is row three: `--detail=` removes the detail, omitting it leaves it alone.
 - **`allowEmpty` is for strings only**, and is refused on a list — an empty element is dropped
   rather than kept, so it could not mean anything there.

@@ -24,11 +24,11 @@ Two requirements: PHP 8.4 and `ext-mbstring`, which the help renderer counts cha
 each declaration is for, which error to raise, what to snapshot, what the package refuses and why,
 and how to move an existing CLI onto it without changing the contract its callers read.
 
-`examples/` is that guide's worked example: a complete command set, its help snapshot, and a test
-you can copy. It ships with the package and the package's own test suite runs it, so it cannot go
-stale against the code.
+**[Worked example](docs/worked-example.md)** — a complete command set, its help snapshot, and a
+canonical test pattern. Its code blocks are generated from fixtures run by the package's own test
+suite. Only the resulting Markdown ships; test classes never enter a consumer's autoload surface.
 
-## The whole thing
+## The whole entrypoint
 
 ```php
 #!/usr/bin/env php
@@ -39,36 +39,11 @@ require __DIR__ . '/../vendor/autoload.php';
 (new App\Cli\Pdf\CommandSet)->run();
 ```
 
-```php
-#[Cli('Print an HTML file to PDF with headless Chrome.', single: true)]
-final class CommandSet extends Commands
-{
-    public function __construct(private readonly PdfRenderer $renderer = new PdfRenderer()) {}
-
-    #[Command('Print one HTML file to PDF.')]
-    public function commandRun(
-        #[Arg('The file to print.', placeholder: 'file.html')]
-        string $file,
-        #[Opt('Output path. Defaults to the input name with a .pdf extension.')]
-        ?string $out = null,
-        #[Opt('Draw the letterhead and set the document title.')]
-        ?string $title = null,
-        #[Opt('Keep the heading, drop the mark.')]
-        bool $noLogo = false,
-    ): CommandResult {
-        $out ??= preg_replace('/\.html?$/iu', '', $file) . '.pdf';
-
-        return CommandResult::json(['pdf' => $this->renderer->render($file, $out, $title, !$noLogo)]);
-    }
-}
-```
-
-That is a complete CLI: `--help`, a generated usage block, `--titel` rejected with the list of
-options that do exist, `--title` with no value rejected, `--no-logo=false` rejected.
-
 The set's constructor lists what the script needs, typed, one per parameter — ordinary constructor
 injection, no container and no service locator. The base class declares no constructor at all, so a
 subclass never has to call `parent::__construct()`, and a set that needs nothing stays a one-liner.
+The generated worked example is the single complete command-set example; README does not keep a
+second copy that could drift from it.
 
 ## What you declare
 
@@ -113,5 +88,5 @@ The dev dependencies are `nette/tester`, `phpstan/phpstan` and `symplify/easy-co
 pinned to exact versions in `composer.json` and resolved in the committed `composer.lock`, so
 `composer install` is reproducible and never resolves anything fresh.
 
-Make is the interface and `make help` lists the targets; the composer scripts underneath it stay
-usable on their own. `make check` is the gate both `on-commit` and `on-push` run.
+In a source checkout, Make is the interface and `make help` lists the targets; the composer scripts
+underneath it stay usable on their own. `make check` is the gate both `on-commit` and `on-push` run.

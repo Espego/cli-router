@@ -900,8 +900,11 @@ $makefile = (string) file_get_contents(__DIR__ . '/../../Makefile');
 Assert::notContains('$(HOME)', $makefile);
 Assert::notContains('safe-update', $makefile);
 
-// The gate itself is unchanged — removing a target must not quietly remove a check from it.
-Assert::contains('check: lint ecs test deps-audit', $makefile);
+// The original gate remains intact, and generated documentation is now part of it as well.
+Assert::contains('check: lint ecs docs-check test deps-audit', $makefile);
+
+// The release-only archive check must stay connected to the push gate, not merely exist unused.
+Assert::contains('on-push: check dist-check', $makefile);
 
 // --- 27. A group name is a closed set in BOTH directions (review finding 1) ------------------------
 //

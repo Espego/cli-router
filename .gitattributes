@@ -1,6 +1,7 @@
-# Keep the distribution archive to what a consumer actually runs. Tests, fixtures and the
+# Keep the distribution archive to what a consumer actually runs. Tests, fixtures, tools and the
 # analyser config are for developing this package, not for sitting in someone's vendor/.
 /tests               export-ignore
+/tools               export-ignore
 /phpstan.neon        export-ignore
 /ecs.php             export-ignore
 /.gitattributes      export-ignore

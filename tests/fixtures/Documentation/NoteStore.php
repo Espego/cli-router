@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Espego\CliRouter\Examples;
+namespace Espego\CliRouter\Tests\Documentation;
 
 /**
  * Stands in for whatever a real script talks to — a database, an HTTP API, a file.
