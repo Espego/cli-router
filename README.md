@@ -18,6 +18,16 @@ Two requirements: PHP 8.4 and `ext-mbstring`, which the help renderer counts cha
 
 ---
 
+## Start here
+
+**[Writing a command set](docs/writing-a-command-set.md)** — the order to decide things in, what
+each declaration is for, which error to raise, what to snapshot, what the package refuses and why,
+and how to move an existing CLI onto it without changing the contract its callers read.
+
+`examples/` is that guide's worked example: a complete command set, its help snapshot, and a test
+you can copy. It ships with the package and the package's own test suite runs it, so it cannot go
+stale against the code.
+
 ## The whole thing
 
 ```php
@@ -56,9 +66,9 @@ final class CommandSet extends Commands
 That is a complete CLI: `--help`, a generated usage block, `--titel` rejected with the list of
 options that do exist, `--title` with no value rejected, `--no-logo=false` rejected.
 
-How to design one of your own — what earns a command, which of the four errors to raise, what to
-snapshot, and the traps where the obvious reading is wrong — is in
-docs/writing-a-command-set.md.
+The set's constructor lists what the script needs, typed, one per parameter — ordinary constructor
+injection, no container and no service locator. The base class declares no constructor at all, so a
+subclass never has to call `parent::__construct()`, and a set that needs nothing stays a one-liner.
 
 ## What you declare
 
@@ -70,147 +80,22 @@ docs/writing-a-command-set.md.
 | `#[Arg]` | on a parameter — a positional; a variadic takes the rest |
 | `#[CatchAs]` | on the class, repeatable — map an exception to an exit code and one stderr line |
 
-Multi-value options are a **type**, not an `array` with a docblock:
-
-```php
-#[Opt('MSA numbers.', placeholder: 'msaNr')]
-StringList $msa,                    // --msa=IC01,IC02
-
-#[Opt('Instance ids.', placeholder: 'id')]
-?IntList $instance = null,
-```
-
-`StringList` and `IntList` ship with the package. For a list of one particular enum, name it once:
-
-```php
-/** @extends EnumList<NoteType> */
-final class NoteTypeList extends EnumList
-{
-    public static function elementType(): string { return NoteType::class; }
-}
-```
-
-after which every option of that type is just `NoteTypeList $type`, and `->all()` resolves to
-`list<NoteType>`. Elements are validated one at a time, so `--instance=1,x,3` names `'x'` rather
-than rejecting the whole value.
-
 Names come from the code: `commandNoteDone()` is `note-done`, `$intendedEnv` is `--intended-env`.
 There is no name override, deliberately — one override is all it takes for the help to start
 describing a flag that does not exist.
 
-Types come from the signature. `string` is required unless it has a default, `bool` is a flag that
-refuses a value, `?DateTimeImmutable` parses, and a backed enum validates itself and prints its own
-`Allowed:` list. The attribute carries only what a type genuinely cannot say: the description, a
-`pattern` (which must be a `/u` one — arguments arrive as UTF-8), a `min`/`max` for a number, a
-`minCount`/`maxCount` for how many elements a list or a variadic may carry, and the `separator` a
-list splits on. A bound the type cannot honour is refused rather than ignored: `min` on a `string`,
-`minCount` on a scalar, a default outside its own range.
+Types come from the signature: `string` is required unless it has a default, `bool` is a flag that
+refuses a value, `?DateTimeImmutable` parses, a backed enum validates itself and prints its own
+`Allowed:` list, and a `ValueList` subtype is a multi-value option. The attribute carries only what
+a type genuinely cannot say — a description, a `pattern`, a `min`/`max`, a `minCount`/`maxCount`, a
+`separator`. Every parameter is documented in the constructor docblock of `src/Param.php`.
 
 ## What the parser does with argv
 
-- `--key=value` and a bare `--flag`. No short options, no `--opt value`.
-- **A repeated option is an error, never resolved.** Keeping the last occurrence let a malformed
-  `--confirm=false` be rescued by a later bare `--confirm` and the write go ahead, so every
-  repeated name is named back: `--what, --confirm were given more than once`.
-- **`--` ends option parsing.** Everything after it is positional whatever it looks like, which is
-  the only way to pass a path beginning with `--`.
-- **argv is text or it is nothing.** Unix hands over bytes; an argument that is not valid UTF-8 is
-  refused by position, never by quoting it back. Everything above the parser — the help counting
-  characters, a `/u` pattern, the sanitiser diagnostics pass through — assumes text, and used to
-  fail in ways that read as something else entirely.
-
-## What happens with no arguments at all
-
-`#[Cli(onEmpty:)]` — `WhenEmpty::Help` (the default, exit 0), `HelpFailed` (the help, exit 1, so a
-typo in a wrapper does not look like it worked), `Error` with an `emptyMessage`, or **`Run`**, which
-is for the `status` / `sync` / `flush` shape: a `single: true` set whose parameters are all optional,
-where being called with nothing is the whole point. Both halves of that are checked at
-introspection, so `Run` cannot be declared where it could only ever produce a usage error.
-
-## What a command returns
-
-`CommandResult::json()`, `::text()` or `::nothing()`, with an exit code — plus `withNotice()` for a
-line that frames what follows and `withWarning()` for one that qualifies it. Notices print to stderr
-before stdout, warnings after, so ordering between the two streams is reproducible.
-
-**An exit code is 0-255, and `fail()`'s is 1-255**, checked where it is constructed rather than
-where it is returned. The shell reads one byte: 999 arrives as 231, 256 as success, and a `fail()`
-of 0 prints a diagnostic and then reports that all is well.
-
-A command body never calls `exit()` and never writes to `STDERR`. That is what makes it callable
-straight from a test:
-
-```php
-$result = (new CommandSet($fakeRenderer))->commandRun('x.html', title: 'Výpověď');
-Assert::same(0, $result->exitCode);
-```
-
-…and what lets the whole CLI be driven without a process:
-
-```php
-$out = new BufferedOutput();
-Assert::same(1, (new CommandSet)->handle(['bin/pdf.php', 'x.html', '--titel=X'], $out));
-Assert::contains('unknown option --titel', $out->err);
-```
-
-## Dependencies
-
-The set's constructor lists what the script needs, typed, one per parameter — ordinary
-constructor injection, no container and no service locator:
-
-```php
-(new App\Cli\Mesa\CommandSet($sysApiClient, $environmentService))->run();
-```
-
-A set that needs nothing stays a one-liner. The base class declares no constructor at all, so a
-subclass never has to call `parent::__construct()`.
-
-## Ordering
-
-Help, an unknown command, an unknown option and every type, pattern or range failure all resolve
-*before* any middleware runs and before a command body exists. A mistyped flag costs an error
-message and nothing else, whatever the command would have gone on to do.
-
-## What it refuses
-
-A declaration that cannot work is refused at introspection, naming the symbol at fault, because the
-alternative is help text that lies or a limit that reads as enforced and is not. On top of the
-unsupported types — a union, a bare `array`, an unknown class, a mutable `DateTime` — it refuses a
-`#[Command]` that is private, static, oddly named or does not return `CommandResult`; a parameter
-carrying both `#[Arg]` and `#[Opt]`; a positional `bool`, which could never be supplied; a
-`ValueList` whose `elementType()` is not one the coercer can produce; a constraint that could never
-apply, or contradicts itself, or that the declared default already violates — elements included, so
-`IntList([0])` under `min: 1` is refused like the scalar it would be; a flag that already defaults
-to true and so can never take another value; and a `#[CatchAs]` whose exit code is outside 1-255,
-whose format is not one `%s`, that names something the runner has already handled, or that covers
-faults rather than a considered no — `Throwable` and the engine's `Error`s stay uncaught, because a
-`TypeError` turned into a tidy exit code is a broken deployment reading as a clean refusal.
-
-Two more classes go the same way. A default is held to everything a typed value meets, so a list
-default whose elements are not the type the list declares is refused — PHP checks only the list
-class, never its contents — and so is a numeric default its own `pattern` would reject, since the
-pattern is matched before a value becomes a number and `#[Opt(pattern: '/^\d{2}$/u')] int $n = 1`
-must agree with an explicit `--n=1`.
-
-And metadata that cannot be reached is refused rather than left reading as configured. A global
-gated on a marker no `#[Command]` carries applies to nothing. Group names are a closed set in both
-directions: a `#[Cli(groups:)]` heading that is empty, repeated, or that no LISTED command fills,
-and a `#[Command(group:)]` naming a heading that was never declared — the latter renders identically
-to declaring no group at all, so the name does nothing. A `#[Cli(single: true)]` set prints no
-command list, which makes `groups`, `group:` and `hidden:` inert on one. `emptyMessage` is printed
-only by `WhenEmpty::Error`. A `width` under `HelpRenderer::MIN_WIDTH` moves nothing, because every
-row is the gutter plus a minimum text column wide whatever the declaration asks for. And prose
-declared as the empty string — a summary, `before`, `after`, `description` — contributes a blank
-line where a sentence was promised; `#[Opt]` and `#[Arg]` descriptions are exempt, since blank is
-their default and a bare `#[Opt]` is what an unattributed parameter gets.
-
-A `DeclarationError` itself is never mapped. `#[CatchAs]` naming it is refused, and one raised at
-runtime — `CommandResult::nothing(999)`, `fail('…', 0)` — is rethrown past any mapping of an
-ancestor such as `LogicException`: the set is wrong, and that has to reach the first run as a fatal.
-
-The refusals are the point of the package rather than a safety net around it, so they carry a test
-each: `tests/unit/DeclarationTest.phpt`, and `tests/unit/RegressionTest.phpt` for the ones a review
-found, numbered to the round that found them.
+- `--key=value` and a bare `--flag`. No short options, no clustering, no `--opt value`.
+- A repeated option is an error, never resolved to the last occurrence.
+- `--` ends option parsing; everything after it is positional whatever it looks like.
+- An argument that is not valid UTF-8 is refused by position. argv is text or it is nothing.
 
 ## Things it deliberately does not do
 
@@ -228,15 +113,5 @@ The dev dependencies are `nette/tester`, `phpstan/phpstan` and `symplify/easy-co
 pinned to exact versions in `composer.json` and resolved in the committed `composer.lock`, so
 `composer install` is reproducible and never resolves anything fresh.
 
-Make is the interface; the composer scripts underneath it stay usable on their own.
-
-```
-make test                # nette/tester, over tests/unit
-make lint                # PHPStan, level max, over src/ and tests/fixtures
-make ecs                 # coding standard, check only
-make ecs-fix             # coding standard, apply
-make deps-audit          # composer audit
-make check               # everything above except the fixer
-make on-commit           # the commit gate: check
-make on-push             # the push gate: check, plus composer validate --strict
-```
+Make is the interface and `make help` lists the targets; the composer scripts underneath it stay
+usable on their own. `make check` is the gate both `on-commit` and `on-push` run.

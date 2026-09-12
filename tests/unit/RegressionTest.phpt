@@ -5,6 +5,9 @@ declare(strict_types=1);
 /**
  * One case per defect found in review. Each was reproduced against the code before being fixed, so
  * every assertion here is known to catch its defect rather than merely to pass.
+ *
+ * One entry (30) is the exception: its defect was in the documentation, and the assertions pin the
+ * behaviour the corrected text now rests on so a later change cannot make that text wrong silently.
  */
 
 require __DIR__ . '/../bootstrap.php';
@@ -1151,3 +1154,53 @@ Assert::contains("One.\nTwo.\n\nFour.", $out->out);
 
 // And short prose is untouched, which tests/unit/CanonicalHelpTest.phpt asserts byte for byte
 // against DemoHelp.expect — that file did not move when this landed.
+
+
+// --- 30. Not given is not the same as given empty (review finding 2) -------------------------------
+//
+// The only entry here whose defect was in the documentation rather than in the code: the guide had
+// `string $s = ''` meaning "given, and empty", which is backwards. Measured, the three declarations
+// answer three different ways, and nothing asserted the distinction the guide now rests on — so a
+// later change to the coercer could make the corrected text wrong again with every test still green.
+
+// onEmpty: Run, so the no-argument invocation reaches the body instead of printing help.
+$empties = new #[Cli('x', single: true, onEmpty: WhenEmpty::Run)] class extends Commands {
+    #[Command('a')]
+    public function commandA(
+        #[Opt('plain')]
+        string $plain = '',
+        #[Opt('permissive', allowEmpty: true)]
+        string $permissive = '',
+        #[Opt('nullable', allowEmpty: true)]
+        ?string $nullable = null,
+    ): CommandResult {
+        return CommandResult::json([
+            'plain' => $plain,
+            'permissive' => $permissive,
+            'nullable' => $nullable === null ? 'NOT GIVEN' : $nullable,
+        ]);
+    }
+};
+
+// Without allowEmpty the empty value is refused, so '' can only ever have come from the default.
+// That is the opposite of what the guide claimed: the empty string means NOT given.
+$out = new BufferedOutput();
+Assert::same(1, $empties->handle(['x.php', '--plain='], $out));
+Assert::same("error: --plain is required and must have a value\n", $out->err);
+
+// With allowEmpty on a non-nullable string the two collapse into one value: the command cannot
+// tell `--permissive=` from an omitted option, which is the reviewer's half of the finding.
+$out = new BufferedOutput();
+Assert::same(0, $empties->handle(['x.php', '--permissive='], $out));
+Assert::contains('"permissive": ""', $out->out);
+$out = new BufferedOutput();
+Assert::same(0, $empties->handle(['x.php'], $out));
+Assert::contains('"permissive": ""', $out->out);
+
+// Nullable plus allowEmpty is the one shape that keeps them apart, and is what the guide now names.
+$out = new BufferedOutput();
+Assert::same(0, $empties->handle(['x.php', '--nullable='], $out));
+Assert::contains('"nullable": ""', $out->out);
+$out = new BufferedOutput();
+Assert::same(0, $empties->handle(['x.php'], $out));
+Assert::contains('"nullable": "NOT GIVEN"', $out->out);
