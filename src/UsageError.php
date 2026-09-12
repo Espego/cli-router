@@ -18,6 +18,13 @@ class UsageError extends RuntimeException
         string $message,
         public readonly int $exitCode = 1
     ) {
+        // Zero is the one that matters: fail('bad', 0) printed a diagnostic and reported success,
+        // so a wrapper script saw a clean run. Above 255 the shell reads one byte and invents a
+        // code nobody declared.
+        if ($exitCode < 1 || $exitCode > 255) {
+            throw new DeclarationError("a UsageError exit code is 1-255, not {$exitCode}.");
+        }
+
         parent::__construct($message);
     }
 }

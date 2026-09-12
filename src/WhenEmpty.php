@@ -21,4 +21,12 @@ enum WhenEmpty
 
     /** One line on stderr, exit 1. */
     case Error;
+
+    /**
+     * Run the command anyway — for a single-command set whose parameters are all optional.
+     *
+     * Without it a `status`, `sync` or `flush` script could not exist: being called with nothing is
+     * what such a command is for, and the alternative was a dummy flag to make the argv non-empty.
+     */
+    case Run;
 }

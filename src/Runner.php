@@ -31,10 +31,13 @@ final class Runner
     /** @param list<string> $argv WITH the script name at [0]. */
     public function handle(array $argv, Output $output): int
     {
-        $program = 'php ' . ($argv[0] ?? 'script.php');
         $set = $this->introspector->set($this->set);
 
+        // The program name reaches the help text, so it is sanitised like anything else the process
+        // did not author — and computed inside the try, where a diagnostic can still be reported.
         try {
+            $program = 'php ' . self::safe($argv[0] ?? 'script.php');
+
             ['args' => $args, 'opts' => $opts, 'duplicates' => $duplicates] =
                 (new ArgumentParser())->parse(array_slice($argv, 1));
 
@@ -56,7 +59,7 @@ final class Runner
                 return 0;
             }
 
-            if ($args === [] && $opts === []) {
+            if ($args === [] && $opts === [] && $set->meta->onEmpty !== WhenEmpty::Run) {
                 return $this->empty($set, $output, $program);
             }
 
@@ -69,6 +72,13 @@ final class Runner
             $output->err('error: ' . self::safe($e->getMessage()) . "\n");
 
             return $e->exitCode;
+        } catch (InternalError $e) {
+            // Coercion can raise one — a preg that fails rather than not matching — and this try
+            // used to catch only UsageError, so it escaped uncaught from the phase whose whole job
+            // is to keep engine errors away from the user. Reported exactly as dispatch reports it.
+            $output->err('internal error: ' . self::safe($e->getMessage()) . "\n");
+
+            return self::EXIT_INTERNAL;
         }
 
         return $this->dispatch($set, $command, $globals, $arguments, $output);
@@ -81,11 +91,13 @@ final class Runner
     private function dispatch(SetInfo $set, CommandInfo $command, array $globals, array $arguments, Output $output): int
     {
         try {
-            // Through reflection rather than `$this->set->{$name} = …`: a dynamic property write is
-            // invisible to static analysis, and these properties are declared — there is no reason
-            // to hide them from it.
-            foreach ($set->globalsFor($command) as $global) {
-                $global->property?->setValue($this->set, $globals[$global->phpName]);
+            // EVERY global, not only the ones that apply: a marked command's --confirm used to stay
+            // set on the instance for the next, unmarked command, and repeated in-process handle()
+            // calls are something this package supports on purpose. Through reflection rather than
+            // `$this->set->{$name} = …`, because a dynamic property write is invisible to static
+            // analysis and these properties are declared.
+            foreach ($set->globals as $global) {
+                $global->property?->setValue($this->set, $globals[$global->phpName] ?? $global->default);
             }
 
             $invocation = new Invocation($command->name, $command->method, $arguments, $output);
@@ -97,6 +109,11 @@ final class Runner
                 $result = $this->pipeline($invocation);
             } finally {
                 $this->set->bindInvocation(null, null);
+
+                // Left as it was found, so what the set holds after a call is what it declared.
+                foreach ($set->globals as $global) {
+                    $global->property?->setValue($this->set, $global->default);
+                }
             }
         } catch (UsageError $e) {
             $output->err('error: ' . self::safe($e->getMessage()) . "\n");
@@ -182,7 +199,15 @@ final class Runner
      */
     private static function safe(string $message): string
     {
-        return (string) preg_replace('/[\x00-\x1F\x7F]/u', '?', $message);
+        // No /u, deliberately. Every byte in this class is a single byte in UTF-8 and never a
+        // continuation byte, so matching bytes is both correct and total — where the /u form
+        // returned null for malformed input and the cast turned that into the empty string, so a
+        // diagnostic about bad bytes was itself erased by them and `error:` was the whole message.
+        $stripped = (string) preg_replace('/[\x00-\x1F\x7F]/', '?', $message);
+
+        // An exception from elsewhere may still carry bytes argv could not: mb_scrub replaces them
+        // rather than letting them reach a terminal.
+        return mb_scrub($stripped, 'UTF-8');
     }
 
     /**
@@ -200,6 +225,11 @@ final class Runner
             }
             if (count($args) > 2) {
                 throw new UsageError('help describes one command. Run: help ' . ($topic ?? '<command>'));
+            }
+            // This branch used to return before it had looked at the options at all, so
+            // `help save --help=false` and `help --bogus` both rendered help and exited 0.
+            if ($opts !== []) {
+                throw new UsageError('help takes no options');
             }
 
             return $topic;

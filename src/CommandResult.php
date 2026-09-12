@@ -28,6 +28,11 @@ final class CommandResult
         public readonly array $notices,
         public readonly array $warnings,
     ) {
+        // The private constructor is the one gate every factory and wither passes through. The
+        // shell reads a single byte of what it is given: 999 arrives as 231, and 256 as success.
+        if ($exitCode < 0 || $exitCode > 255) {
+            throw new DeclarationError("a command result exit code is 0-255, not {$exitCode}.");
+        }
     }
 
     /** Encoded by the runner, so every script in a family formats JSON the same way. */

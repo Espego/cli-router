@@ -8,6 +8,7 @@ use Attribute;
 use BackedEnum;
 use DateTimeImmutable;
 use DateTimeInterface;
+use Error;
 use ReflectionAttribute;
 use ReflectionClass;
 use ReflectionMethod;
@@ -66,7 +67,37 @@ final class Introspector
             ));
         }
 
+        if ($cli->onEmpty === WhenEmpty::Run) {
+            $this->assertRunnableEmpty($cli, $commands, $class->getName());
+        }
+
         return new SetInfo($cli, $commands, $globals, $this->catches($class));
+    }
+
+    /**
+     * WhenEmpty::Run says "no arguments is a complete invocation", which two declarations can make
+     * untrue — and both would only show up the first time someone ran the script with nothing.
+     *
+     * @param array<string, CommandInfo> $commands
+     */
+    private function assertRunnableEmpty(Cli $cli, array $commands, string $where): void
+    {
+        if (! $cli->single) {
+            throw new DeclarationError(
+                "{$where}: WhenEmpty::Run needs #[Cli(single: true)] — with several commands there is "
+                . 'nothing for an empty argv to run.'
+            );
+        }
+
+        foreach (array_values($commands)[0]->params as $spec) {
+            if ($spec->mustBeGiven()) {
+                throw new DeclarationError(sprintf(
+                    '%s: WhenEmpty::Run, but %s must be given, so an empty argv could only ever be a usage error.',
+                    $where,
+                    $spec->positional ? '<' . $spec->placeholder() . '>' : '--' . $spec->cliName,
+                ));
+            }
+        }
     }
 
     /**
@@ -96,6 +127,17 @@ final class Introspector
                         $catch->exception,
                     ));
                 }
+            }
+
+            // A fault stays a fault. Throwable covers the engine's own errors, and a TypeError
+            // turned into a tidy exit code is how a broken deployment comes to look like a clean
+            // refusal — which is the one thing #[CatchAs] exists not to do.
+            if ($catch->exception === Throwable::class || is_a($catch->exception, Error::class, true)) {
+                throw new DeclarationError(sprintf(
+                    '%s: #[CatchAs] names %s, which covers faults rather than a considered no.',
+                    $where,
+                    $catch->exception,
+                ));
             }
             foreach ($catches as $earlier) {
                 if (is_a($catch->exception, $earlier->exception, true)) {
@@ -473,6 +515,17 @@ final class Introspector
         if ($spec->positional && $spec->typeName === 'bool') {
             throw new DeclarationError("{$where}: a positional cannot be bool — there is no way to supply one.");
         }
+        if ($spec->typeName === 'bool' && $spec->default === true) {
+            throw new DeclarationError(
+                "{$where}: a flag defaulting to true can never take another value. Invert the name."
+            );
+        }
+        if ($spec->variadic && $spec->isList()) {
+            throw new DeclarationError(
+                "{$where}: a variadic of lists gives minCount two meanings — how many arguments, and how "
+                . 'many elements in each. Take a variadic of the element type instead.'
+            );
+        }
         if ($meta instanceof Arg && $meta->required && ! $spec->variadic) {
             throw new DeclarationError(
                 "{$where}: required applies to a variadic. A positional is required unless it has a default."
@@ -490,6 +543,17 @@ final class Introspector
         }
         if ($meta->allowEmpty && $spec->isList()) {
             throw new DeclarationError("{$where}: allowEmpty cannot apply to a list — an empty element is dropped.");
+        }
+        if ($meta->allowEmpty && $spec->typeName !== 'string') {
+            throw new DeclarationError(
+                "{$where}: allowEmpty applies to a string. Anywhere else the empty value only reaches a "
+                . 'coercion that rejects it, or a date that reads as now.'
+            );
+        }
+        // Only a list is split. Comparing against the default is the whole test available here, and
+        // an explicit `separator: ','` is the same no-op as leaving it out.
+        if ($meta->separator !== ',' && ! $spec->isList()) {
+            throw new DeclarationError("{$where}: separator applies to a list, which this is not.");
         }
 
         $this->assertCounts($spec, $where);
@@ -592,6 +656,30 @@ final class Introspector
                     $count,
                 ));
             }
+
+            // Counting them is not checking them: IntList([0]) under min: 1 used to pass, because
+            // cardinality was the only thing a list default was asked about.
+            foreach ($default as $element) {
+                $this->assertElement($element, $meta, $where);
+            }
+        }
+    }
+
+    /** One element of a list default, held to what a typed element of the same list would meet. */
+    private function assertElement(mixed $element, Param $meta, string $where): void
+    {
+        if ((is_int($element) || is_float($element))
+            && (! Constraints::atLeast($element, $meta->min) || ! Constraints::atMost($element, $meta->max))
+        ) {
+            throw new DeclarationError(sprintf(
+                '%s: the default element %s is outside the min/max the same declaration sets.',
+                $where,
+                (string) $element,
+            ));
+        }
+
+        if (is_string($element) && ! Constraints::matchesPattern($meta->pattern, $element)) {
+            throw new DeclarationError("{$where}: the default element '{$element}' does not match its own pattern.");
         }
     }
 

@@ -14,6 +14,8 @@ namespace Espego\CliRouter;
  * A bare `--flag` yields `true`, distinct from `--flag=` which yields `''` — the caller can then
  * refuse "given but empty" separately from "given as a flag", which is the difference between
  * writing an empty note and refusing to.
+ *
+ * It is also where text begins: argv arrives as bytes and leaves here as UTF-8 or not at all.
  */
 final class ArgumentParser
 {
@@ -28,7 +30,16 @@ final class ArgumentParser
         $duplicates = [];
         $endOfOptions = false;
 
-        foreach ($argv as $arg) {
+        foreach ($argv as $position => $arg) {
+            // Unix argv is bytes, and nothing above this layer is prepared for that: the help
+            // counts characters, a /u pattern raises rather than matching, and the very function
+            // that sanitises diagnostics used to return the empty string for them — so the whole
+            // message disappeared and `error:` was all the user saw. The position, never the
+            // content: echoing the bad bytes back is what is being prevented.
+            if (! mb_check_encoding($arg, 'UTF-8')) {
+                throw new UsageError('argument ' . ($position + 1) . ' is not valid UTF-8');
+            }
+
             if ($endOfOptions || ! str_starts_with($arg, '--')) {
                 $args[] = $arg;
                 continue;

@@ -16,10 +16,10 @@ use Tester\Assert;
 /** @return array{int, string, string} */
 function script(string ...$args): array
 {
-	$command = escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg(__DIR__ . '/../scripts/files.php');
-	foreach ($args as $arg) {
-		$command .= ' ' . escapeshellarg($arg);
-	}
+	// The array form, so there is no shell in between. escapeshellarg() drops bytes that do not
+	// form valid characters in the current locale, which is precisely the input one case here needs
+	// to deliver intact.
+	$command = [PHP_BINARY, __DIR__ . '/../scripts/files.php', ...$args];
 
 	$pipes = [];
 	$process = proc_open($command, [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes);
@@ -52,7 +52,7 @@ Assert::same(0, $code);
 Assert::same('', $stderr);
 Assert::contains('Check files.', $stdout);
 
-// An argument beginning with `--` survives the shell and `--`, arriving as a positional.
+// An argument beginning with `--` survives `--`, arriving as a positional.
 [$code, $stdout] = script('--', '--strange.pdf');
 Assert::same(0, $code);
 Assert::same(['--strange.pdf'], json_decode($stdout, true)['files']);
@@ -62,3 +62,15 @@ Assert::same(['--strange.pdf'], json_decode($stdout, true)['files']);
 Assert::same(1, $code);
 Assert::same('', $stdout);
 Assert::contains('unknown option --nope', $stderr);
+
+// Malformed argv bytes, through a real process rather than a buffer — the failure is about what
+// reaches a terminal. The diagnostic used to be erased by the very bytes it was reporting, leaving
+// `error:` and nothing else, because safe() asked preg to read them as UTF-8.
+[$code, $stdout, $stderr] = script("sm\xC3\x28ll.pdf");
+Assert::same(1, $code);
+Assert::same('', $stdout);
+Assert::same("error: argument 1 is not valid UTF-8\n", $stderr);
+
+// And the exit code a command declares is the code the shell is handed.
+[$code] = script('a.pdf', '--fail');
+Assert::same(3, $code);

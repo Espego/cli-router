@@ -35,9 +35,11 @@ abstract class Commands
      */
     final public function run(?array $argv = null): never
     {
+        // Thrown rather than written and exited: STDERR is undefined outside the CLI SAPI, so the
+        // guard was itself an Error there — and exit(1) mid-request would truncate a web response
+        // into a silent success. A deployment fault belongs in that SAPI's own error handling.
         if (PHP_SAPI !== 'cli') {
-            fwrite(STDERR, static::class . " is a CLI tool.\n");
-            exit(1);
+            throw new LogicException(static::class . ' is a CLI tool; PHP_SAPI is ' . PHP_SAPI . '.');
         }
 
         exit($this->handle($argv ?? self::argv()));

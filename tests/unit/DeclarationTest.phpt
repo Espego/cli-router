@@ -21,6 +21,7 @@ use Espego\CliRouter\CommandResult;
 use Espego\CliRouter\Commands;
 use Espego\CliRouter\DeclarationError;
 use Espego\CliRouter\EnumList;
+use Espego\CliRouter\IntList;
 use Espego\CliRouter\Introspector;
 use Espego\CliRouter\Opt;
 use Espego\CliRouter\StringList;
@@ -29,6 +30,7 @@ use Espego\CliRouter\Tests\Mutates;
 use Espego\CliRouter\Tests\NoteTypeList;
 use Espego\CliRouter\UsageError;
 use Espego\CliRouter\ValueList;
+use Espego\CliRouter\WhenEmpty;
 use Tester\Assert;
 
 /** A backed enum with nothing to accept: every value would be invalid, help would print `Allowed: `. */
@@ -288,6 +290,58 @@ rejects('a positional flag', static fn() => new #[Cli('x')] class extends Comman
 	}
 }, '~a positional cannot be bool~');
 
+rejects('a list default whose elements break its bounds', static fn() => new #[Cli('x')] class extends Commands {
+	#[Command('a')]
+	public function commandA(#[Opt('u', min: 1)] IntList $v = new IntList([0])): CommandResult
+	{
+		return CommandResult::nothing();
+	}
+}, '~the default element 0 is outside the min/max~');
+
+rejects('a list default whose elements break its pattern', static fn() => new #[Cli('x')] class extends Commands {
+	#[Command('a')]
+	public function commandA(#[Opt('u', pattern: '/^\d+$/u')] StringList $v = new StringList(['bad'])): CommandResult
+	{
+		return CommandResult::nothing();
+	}
+}, "~the default element 'bad' does not match its own pattern~");
+
+// A flag can only ever be SET. One that starts true has no value left to take, so the option is
+// decoration and the name says the opposite of what the script does.
+rejects('a flag that is already true', static fn() => new #[Cli('x')] class extends Commands {
+	#[Command('a')]
+	public function commandA(#[Opt('u')] bool $v = true): CommandResult
+	{
+		return CommandResult::nothing();
+	}
+}, '~can never take another value~');
+
+rejects('allowEmpty where empty is not a value', static fn() => new #[Cli('x')] class extends Commands {
+	#[Command('a')]
+	public function commandA(#[Opt('u', allowEmpty: true)] int $v = 1): CommandResult
+	{
+		return CommandResult::nothing();
+	}
+}, '~allowEmpty applies to a string~');
+
+rejects('a separator on something that is never split', static fn() => new #[Cli('x')] class extends Commands {
+	#[Command('a')]
+	public function commandA(#[Opt('u', separator: ';')] int $v = 1): CommandResult
+	{
+		return CommandResult::nothing();
+	}
+}, '~separator applies to a list~');
+
+// minCount would mean both "how many arguments" and "how many elements in each", and the coercer
+// duly checked it twice, against two different numbers.
+rejects('a variadic of lists', static fn() => new #[Cli('x')] class extends Commands {
+	#[Command('a')]
+	public function commandA(#[Arg('u', minCount: 2)] StringList ...$v): CommandResult
+	{
+		return CommandResult::nothing();
+	}
+}, '~a variadic of lists gives minCount two meanings~');
+
 // --- One declaration per symbol ----------------------------------------------------------------
 //
 // Both attributes used to be read and the first silently won, so the help described the loser.
@@ -456,6 +510,24 @@ rejects('a mapping the runner handles first', static fn() => new #[Cli('x')] #[C
 	}
 }, '~which the runner handles itself~');
 
+// A fault stays a fault: mapping Throwable or an Error turns a TypeError into a tidy refusal, and
+// a broken deployment then reads as a considered no.
+rejects('a mapping that covers faults', static fn() => new #[Cli('x')] #[CatchAs(Throwable::class, exitCode: 4)] class extends Commands {
+	#[Command('a')]
+	public function commandA(): CommandResult
+	{
+		return CommandResult::nothing();
+	}
+}, '~covers faults rather than a considered no~');
+
+rejects('a mapping of an engine error', static fn() => new #[Cli('x')] #[CatchAs(TypeError::class, exitCode: 4)] class extends Commands {
+	#[Command('a')]
+	public function commandA(): CommandResult
+	{
+		return CommandResult::nothing();
+	}
+}, '~covers faults rather than a considered no~');
+
 rejects('a mapping an earlier one already catches', static fn() => new #[Cli('x')]
 	#[CatchAs(LogicException::class, exitCode: 4)]
 	#[CatchAs(DomainException::class, exitCode: 5)]
@@ -466,6 +538,33 @@ rejects('a mapping an earlier one already catches', static fn() => new #[Cli('x'
 			return CommandResult::nothing();
 		}
 	}, '~already catches it~');
+
+// --- WhenEmpty::Run ------------------------------------------------------------------------------
+//
+// It promises that no arguments is a complete invocation. Two declarations make that untrue, and
+// both would otherwise only surface the first time someone ran the script with nothing.
+
+rejects('Run with nothing to run', static fn() => new #[Cli('x', onEmpty: WhenEmpty::Run)] class extends Commands {
+	#[Command('a')]
+	public function commandA(): CommandResult
+	{
+		return CommandResult::nothing();
+	}
+
+	#[Command('b')]
+	public function commandB(): CommandResult
+	{
+		return CommandResult::nothing();
+	}
+}, '~needs #\[Cli\(single: true\)\]~');
+
+rejects('Run that could only fail', static fn() => new #[Cli('x', single: true, onEmpty: WhenEmpty::Run)] class extends Commands {
+	#[Command('a')]
+	public function commandA(#[Opt('w')] string $what): CommandResult
+	{
+		return CommandResult::nothing();
+	}
+}, '~--what must be given~');
 
 // --- And the supported declarations are genuinely accepted --------------------------------------
 //
@@ -500,3 +599,13 @@ Assert::same(['a'], (new Introspector())->set($ok)->names());
 // A variadic that insists is not optional, and the synopsis must not bracket it as if it were.
 $spec = (new Introspector())->set($ok)->get('a')->variadic();
 Assert::true($spec?->mustBeGiven());
+
+// A single set whose parameters are all optional is exactly what WhenEmpty::Run is for.
+$runnable = new #[Cli('x', single: true, onEmpty: WhenEmpty::Run)] class extends Commands {
+	#[Command('a')]
+	public function commandA(#[Opt('v')] bool $verbose = false): CommandResult
+	{
+		return CommandResult::nothing();
+	}
+};
+Assert::same(['a'], (new Introspector())->set($runnable)->names());

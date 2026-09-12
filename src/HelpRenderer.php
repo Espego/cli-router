@@ -37,6 +37,17 @@ final class HelpRenderer
         $out = $set->meta->summary . "\n\n";
         $out .= $this->usage($set, null, $program) . "\n";
 
+        // A single set has no `help <command>` topic to reach command(), so this is the only place
+        // its #[Command] prose can appear at all — without it the summary a command must declare
+        // was simply never printed. Same order command() uses.
+        if ($set->meta->single) {
+            $out .= "\n" . $set->only()->meta->summary . "\n";
+
+            if ($set->only()->meta->description !== null) {
+                $out .= "\n" . $this->paragraph($set->only()->meta->description, $set->meta->width) . "\n";
+            }
+        }
+
         if ($set->meta->before !== null) {
             $out .= "\n" . $set->meta->before . "\n";
         }
@@ -231,7 +242,15 @@ final class HelpRenderer
             )) . '.';
         }
 
-        if ($spec->isRequired()) {
+        foreach ([$this->bounds($spec->meta), $this->counts($spec->meta)] as $clause) {
+            if ($clause !== null) {
+                $text = rtrim($text) . ' ' . $clause;
+            }
+        }
+
+        // Required-ness and the default are last, and the constraints above them: this used to
+        // return here, so anything appended afterwards was invisible for every required value.
+        if ($spec->mustBeGiven()) {
             return rtrim($text) . ' Required.';
         }
 
@@ -259,6 +278,43 @@ final class HelpRenderer
         }
 
         return max(self::MIN_COMMAND_GUTTER, $longest);
+    }
+
+    /** What a number must be, when the declaration says. */
+    private function bounds(Param $meta): ?string
+    {
+        if ($meta->min !== null && $meta->max !== null) {
+            return sprintf('Between %s and %s.', $meta->min, $meta->max);
+        }
+        if ($meta->min !== null) {
+            return sprintf('At least %s.', $meta->min);
+        }
+        if ($meta->max !== null) {
+            return sprintf('At most %s.', $meta->max);
+        }
+
+        return null;
+    }
+
+    /** How many values a list or a variadic may carry, when the declaration says. */
+    private function counts(Param $meta): ?string
+    {
+        if ($meta->minCount !== null && $meta->maxCount !== null) {
+            return sprintf('Between %d and %d %s.', $meta->minCount, $meta->maxCount, $this->values($meta->maxCount));
+        }
+        if ($meta->minCount !== null) {
+            return sprintf('At least %d %s.', $meta->minCount, $this->values($meta->minCount));
+        }
+        if ($meta->maxCount !== null) {
+            return sprintf('At most %d %s.', $meta->maxCount, $this->values($meta->maxCount));
+        }
+
+        return null;
+    }
+
+    private function values(int $count): string
+    {
+        return $count === 1 ? 'value' : 'values';
     }
 
     /**

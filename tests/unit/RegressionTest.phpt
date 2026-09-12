@@ -15,9 +15,13 @@ use Espego\CliRouter\Cli;
 use Espego\CliRouter\Command;
 use Espego\CliRouter\CommandResult;
 use Espego\CliRouter\Commands;
+use Espego\CliRouter\DeclarationError;
 use Espego\CliRouter\Introspector;
 use Espego\CliRouter\Opt;
 use Espego\CliRouter\StreamOutput;
+use Espego\CliRouter\Tests\Mutates;
+use Espego\CliRouter\UsageError;
+use Espego\CliRouter\WhenEmpty;
 use Espego\CliRouter\Tests\EdgeSet;
 use Tester\Assert;
 
@@ -75,8 +79,14 @@ stream_wrapper_register('partial', PartialStream::class);
 /** @return array{int, string, string} */
 function edge(array $argv): array
 {
+    return edgeOn(new EdgeSet(), $argv);
+}
+
+/** The same, on a set instance the caller keeps — so a second call can see what the first left. */
+function edgeOn(EdgeSet $set, array $argv): array
+{
     $out = new BufferedOutput();
-    $code = (new EdgeSet())->handle(['edge.php', ...$argv], $out);
+    $code = $set->handle(['edge.php', ...$argv], $out);
 
     return [$code, $out->out, $out->err];
 }
@@ -333,3 +343,145 @@ $out = new BufferedOutput();
 $insists->handle(['x.php', 'help', 'a'], $out);
 Assert::contains('x.php a <file>...', $out->out);
 Assert::notContains('[<file>...]', $out->out);
+
+// --- 14. An exit code the shell cannot carry -------------------------------------------------------
+//
+// The shell reads one byte of it. 999 arrived as 231 and 256 as SUCCESS, and fail('bad', 0) printed
+// a diagnostic and then reported that everything had gone well — the worst of the three, because a
+// wrapper script believes it.
+
+Assert::exception(
+    static fn() => new UsageError('bad', 0),
+    DeclarationError::class,
+    'a UsageError exit code is 1-255, not 0.',
+);
+Assert::exception(
+    static fn() => CommandResult::nothing(999),
+    DeclarationError::class,
+    'a command result exit code is 0-255, not 999.',
+);
+Assert::exception(
+    static fn() => CommandResult::nothing(256),
+    DeclarationError::class,
+    'a command result exit code is 0-255, not 256.',
+);
+
+// The whole range a shell can carry is still available, ends included.
+Assert::same(0, CommandResult::nothing(0)->exitCode);
+Assert::same(255, CommandResult::nothing(255)->exitCode);
+Assert::same(1, (new UsageError('bad'))->exitCode);
+
+// --- 15. argv is bytes, and everything above the parser assumes text -------------------------------
+//
+// safe() asked preg to read the message as UTF-8 and got null back for malformed input, which the
+// cast turned into the empty string: the diagnostic about the bad bytes was erased by them, and
+// `error:` was all that was left. With a consumer /u pattern it was worse — an InternalError raised
+// during coercion, in a try that caught only UsageError, so it escaped uncaught.
+
+$invalid = "sm\xC3\x28ll";
+
+[$code, $out, $err] = edge([$invalid]);
+Assert::same(1, $code);
+Assert::same('', $out);
+Assert::same("error: argument 1 is not valid UTF-8\n", $err);
+
+[$code, , $err] = edge(['save', '--what=' . $invalid]);
+Assert::same(1, $code);
+Assert::same("error: argument 2 is not valid UTF-8\n", $err);
+
+// Valid UTF-8 that is not ASCII is text like any other, and must not be caught by the same net.
+Assert::same('příliš', json_decode(edge(['save', '--what=příliš', '--confirm'])[1], true)['what']);
+
+// --- 16. `help` takes no options -------------------------------------------------------------------
+//
+// The positional branch returned before it had looked at the options at all, so a valued --help and
+// an outright unknown option both rendered help and exited 0.
+
+foreach ([['help', 'save', '--help=false'], ['help', '--bogus']] as $argv) {
+    [$code, $out, $err] = edge($argv);
+    Assert::same(1, $code, implode(' ', $argv));
+    Assert::same('', $out, implode(' ', $argv));
+    Assert::same("error: help takes no options\n", $err);
+}
+
+// `help <command>` itself still answers.
+[$code, $out] = edge(['help', 'save']);
+Assert::same(0, $code);
+Assert::contains('--what', $out);
+
+// --- 17. A global must not outlive the call --------------------------------------------------------
+//
+// Only the globals applying to the command were assigned, and none were ever put back. On one
+// instance, --confirm on a marked command was still true for the next, unmarked one — and repeated
+// in-process handle() calls are something this package supports on purpose (see 9).
+
+$gated = new #[Cli('x')] class extends Commands {
+    #[Opt('Actually write.', onlyWhen: Mutates::class)]
+    public bool $confirm = false;
+
+    #[Mutates]
+    #[Command('Write.')]
+    public function commandWrite(): CommandResult
+    {
+        return CommandResult::json($this->confirm);
+    }
+
+    #[Command('Read.')]
+    public function commandRead(): CommandResult
+    {
+        return CommandResult::json($this->confirm);
+    }
+};
+
+$out = new BufferedOutput();
+$gated->handle(['x.php', 'write', '--confirm'], $out);
+Assert::true(json_decode($out->out, true));
+
+// The next command does not take --confirm at all, so it must see what the property declares.
+$out = new BufferedOutput();
+$gated->handle(['x.php', 'read'], $out);
+Assert::false(json_decode($out->out, true), 'a gated global must not carry into a command that cannot take it');
+
+// And the instance is left holding what it declared, not what the last call set.
+Assert::false($gated->confirm);
+
+// --- 18. A command that takes no arguments can be run ----------------------------------------------
+//
+// Every empty invocation went to the help/error branch, so a `status`, `sync` or `flush` script
+// could not exist without a dummy flag to make argv non-empty.
+
+$status = new #[Cli('Report status.', single: true, onEmpty: WhenEmpty::Run)] class extends Commands {
+    #[Command('Say whether things are well.')]
+    public function commandStatus(
+        #[Opt('Say more.')]
+        bool $verbose = false,
+    ): CommandResult {
+        return CommandResult::json(['ok' => true, 'verbose' => $verbose]);
+    }
+};
+
+$out = new BufferedOutput();
+Assert::same(0, $status->handle(['status.php'], $out));
+Assert::same(['ok' => true, 'verbose' => false], json_decode($out->out, true));
+
+// Options still reach it, and --help still wins over running.
+$out = new BufferedOutput();
+$status->handle(['status.php', '--verbose'], $out);
+Assert::true(json_decode($out->out, true)['verbose']);
+
+$out = new BufferedOutput();
+Assert::same(0, $status->handle(['status.php', '--help'], $out));
+Assert::contains('Say whether things are well.', $out->out);
+
+// --- 19. The help states the constraints the declaration sets --------------------------------------
+//
+// A bound that only appears when it is violated is a bound nobody can plan around; and a single set
+// never reached command(), so the summary its one command must declare was never printed at all.
+
+$out = new BufferedOutput();
+(new EdgeSet())->handle(['edge.php', 'help', 'tags'], $out);
+Assert::contains('Between 2 and 3 values.', $out->out);
+
+$out = new BufferedOutput();
+(new Espego\CliRouter\Tests\FileSet())->handle(['files.php', '--help'], $out);
+Assert::contains('Audit one or more files.', $out->out);

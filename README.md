@@ -110,12 +110,28 @@ list splits on. A bound the type cannot honour is refused rather than ignored: `
   repeated name is named back: `--what, --confirm were given more than once`.
 - **`--` ends option parsing.** Everything after it is positional whatever it looks like, which is
   the only way to pass a path beginning with `--`.
+- **argv is text or it is nothing.** Unix hands over bytes; an argument that is not valid UTF-8 is
+  refused by position, never by quoting it back. Everything above the parser — the help counting
+  characters, a `/u` pattern, the sanitiser diagnostics pass through — assumes text, and used to
+  fail in ways that read as something else entirely.
+
+## What happens with no arguments at all
+
+`#[Cli(onEmpty:)]` — `WhenEmpty::Help` (the default, exit 0), `HelpFailed` (the help, exit 1, so a
+typo in a wrapper does not look like it worked), `Error` with an `emptyMessage`, or **`Run`**, which
+is for the `status` / `sync` / `flush` shape: a `single: true` set whose parameters are all optional,
+where being called with nothing is the whole point. Both halves of that are checked at
+introspection, so `Run` cannot be declared where it could only ever produce a usage error.
 
 ## What a command returns
 
 `CommandResult::json()`, `::text()` or `::nothing()`, with an exit code — plus `withNotice()` for a
 line that frames what follows and `withWarning()` for one that qualifies it. Notices print to stderr
 before stdout, warnings after, so ordering between the two streams is reproducible.
+
+**An exit code is 0-255, and `fail()`'s is 1-255**, checked where it is constructed rather than
+where it is returned. The shell reads one byte: 999 arrives as 231, 256 as success, and a `fail()`
+of 0 prints a diagnostic and then reports that all is well.
 
 A command body never calls `exit()` and never writes to `STDERR`. That is what makes it callable
 straight from a test:
@@ -159,9 +175,12 @@ unsupported types — a union, a bare `array`, an unknown class, a mutable `Date
 `#[Command]` that is private, static, oddly named or does not return `CommandResult`; a parameter
 carrying both `#[Arg]` and `#[Opt]`; a positional `bool`, which could never be supplied; a
 `ValueList` whose `elementType()` is not one the coercer can produce; a constraint that could never
-apply, or contradicts itself, or that the declared default already violates; and a `#[CatchAs]`
-whose exit code is outside 1-255, whose format is not one `%s`, or that names something the runner
-has already handled.
+apply, or contradicts itself, or that the declared default already violates — elements included, so
+`IntList([0])` under `min: 1` is refused like the scalar it would be; a flag that already defaults
+to true and so can never take another value; and a `#[CatchAs]` whose exit code is outside 1-255,
+whose format is not one `%s`, that names something the runner has already handled, or that covers
+faults rather than a considered no — `Throwable` and the engine's `Error`s stay uncaught, because a
+`TypeError` turned into a tidy exit code is a broken deployment reading as a clean refusal.
 
 The refusals are the point of the package rather than a safety net around it, so they carry a test
 each: `tests/unit/DeclarationTest.phpt`.
