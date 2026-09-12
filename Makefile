@@ -11,8 +11,8 @@ help: ## Show available targets
 
 # ── Checks ───────────────────────────────────────
 
-test: ## Unit tests (nette/tester, tests/unit)
-	@vendor/bin/tester -C tests/unit -s
+test: ## Unit tests (nette/tester, tests/unit and the shipped example)
+	@vendor/bin/tester -C tests/unit examples -s
 
 lint: ## Static analysis (PHPStan level max)
 	@vendor/bin/phpstan analyse --memory-limit=512M
@@ -45,4 +45,4 @@ on-push: check ## Push gate (adds manifest validation)
 # ── Housekeeping ─────────────────────────────────
 
 clean: ## Remove test artefacts
-	@rm -rf tests/unit/output
+	@rm -rf tests/unit/output examples/output

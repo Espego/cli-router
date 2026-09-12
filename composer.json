@@ -19,7 +19,8 @@
 	},
 	"autoload-dev": {
 		"psr-4": {
-			"Espego\\CliRouter\\Tests\\": "tests/fixtures"
+			"Espego\\CliRouter\\Tests\\": "tests/fixtures",
+			"Espego\\CliRouter\\Examples\\": "examples"
 		}
 	},
 	"config": {
@@ -32,7 +33,7 @@
 		"ecs": "ecs check",
 		"ecs-fix": "ecs check --fix",
 		"phpstan": "phpstan analyse --memory-limit=512M",
-		"tester": "tester -C tests/unit -s"
+		"tester": "tester -C tests/unit examples -s"
 	},
 	"minimum-stability": "stable"
 }

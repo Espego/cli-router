@@ -1,3 +1,4 @@
 /vendor/
 /tests/**/output/
+/examples/output/
 .DS_Store

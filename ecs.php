@@ -11,6 +11,7 @@ return ECSConfig::configure()
     ->withPreparedSets(common: true, psr12: true)
     ->withPaths([
         __DIR__ . '/src',
+        __DIR__ . '/examples',
         __DIR__ . '/tests',
     ])
     ->withSkip([

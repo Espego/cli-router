@@ -1,0 +1,21 @@
+Keep a short list of notes.
+
+  php notes.php <command> [options]
+  php notes.php help [<command>]
+
+Read:
+  list [--priority=<low|normal|high>] [--tag=<tag>[,<tag>...]] [--limit=<n>]
+                        List notes, newest first.
+  show <id>             Print one note.
+
+Write:
+  add <text> [--priority=<low|normal|high>] [--tag=<tag>[,<tag>...]]
+                        Add a note.
+  edit <id> [--text=<text>] [--priority=<low|normal|high>] [--detail=<detail>]
+       [--due=<Y-m-d>]
+                        Change some fields of a note.
+
+Options:
+  --help                 Print this.
+
+A write command previews what it would do and stops. --confirm carries it out.
