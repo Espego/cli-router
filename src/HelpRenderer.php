@@ -45,14 +45,14 @@ final class HelpRenderer
 
     private function set(SetInfo $set, string $program): string
     {
-        $out = $set->meta->summary . "\n\n";
+        $out = $this->paragraph($set->meta->summary, $set->meta->width) . "\n\n";
         $out .= $this->usage($set, null, $program) . "\n";
 
         // A single set has no `help <command>` topic to reach command(), so this is the only place
         // its #[Command] prose can appear at all — without it the summary a command must declare
         // was simply never printed. Same order command() uses.
         if ($set->meta->single) {
-            $out .= "\n" . $set->only()->meta->summary . "\n";
+            $out .= "\n" . $this->paragraph($set->only()->meta->summary, $set->meta->width) . "\n";
 
             if ($set->only()->meta->description !== null) {
                 $out .= "\n" . $this->paragraph($set->only()->meta->description, $set->meta->width) . "\n";
@@ -60,7 +60,7 @@ final class HelpRenderer
         }
 
         if ($set->meta->before !== null) {
-            $out .= "\n" . $set->meta->before . "\n";
+            $out .= "\n" . $this->paragraph($set->meta->before, $set->meta->width) . "\n";
         }
 
         if (! $set->meta->single) {
@@ -80,7 +80,7 @@ final class HelpRenderer
         $out .= "\n" . $this->optionList($options, $set->meta->width);
 
         if ($set->meta->after !== null) {
-            $out .= "\n" . $set->meta->after . "\n";
+            $out .= "\n" . $this->paragraph($set->meta->after, $set->meta->width) . "\n";
         }
 
         return $out;
@@ -88,9 +88,9 @@ final class HelpRenderer
 
     private function command(SetInfo $set, CommandInfo $command, string $program): string
     {
-        $out = $set->meta->summary . "\n\n";
+        $out = $this->paragraph($set->meta->summary, $set->meta->width) . "\n\n";
         $out .= $this->usage($set, $command, $program) . "\n";
-        $out .= "\n" . $command->meta->summary . "\n";
+        $out .= "\n" . $this->paragraph($command->meta->summary, $set->meta->width) . "\n";
 
         if ($command->meta->description !== null) {
             $out .= "\n" . $this->paragraph($command->meta->description, $set->meta->width) . "\n";
@@ -376,6 +376,14 @@ final class HelpRenderer
         return $out . rtrim($line);
     }
 
+    /**
+     * Declared prose, laid out at the declared width.
+     *
+     * Everything the renderer puts in a column has always wrapped; everything it printed as a
+     * standalone paragraph did not, except a description — so a long summary, before or after
+     * overran the margin at every width, the default included, and `width` quietly meant "the
+     * columns only". Explicit newlines survive, so prose that chose its own breaks keeps them.
+     */
     private function paragraph(string $text, int $width): string
     {
         return implode("\n", $this->wrap($text, $width));

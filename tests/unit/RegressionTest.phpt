@@ -994,10 +994,9 @@ refuses(static fn() => new #[Cli('x', width: 44)] class extends Commands {
 // The accepted end of that boundary: the floor itself is legal, and it is honoured — which is the
 // whole reason it is the floor. Asserted the way CanonicalHelpTest asserts the default width.
 //
-// The summaries here are deliberately short: a #[Cli] or #[Command] summary is the one prose field
-// the renderer prints VERBATIM — description goes through paragraph(), summary does not — so a long
-// one overruns the margin at any width, the default included. That is a rendering question and not
-// what this section is about; what is asserted is that the wrapped columns honour the declaration.
+// (The summaries here were once deliberately short, because a summary was printed verbatim and a
+// long one overran the margin at any width. Section 29 fixed that; they stay short because this
+// section is about the floor, not about wrapping.)
 $narrow = new #[Cli('Narrow.', width: HelpRenderer::MIN_WIDTH)] class extends Commands {
     #[Command('Do a thing.', description: 'A description long enough that it has to wrap more than once at this width.')]
     public function commandA(
@@ -1088,3 +1087,67 @@ $terse = new #[Cli('x')] class extends Commands {
     }
 };
 Assert::same(['a'], (new Introspector())->set($terse)->names());
+
+// --- 29. Declared prose is laid out at the declared width -----------------------------------------
+//
+// Found while asserting 28's accepted end, not reported: `width` moved the columns and nothing else.
+// Everything the renderer lays out in a column had always wrapped, but everything it printed as a
+// standalone paragraph did not — except a description — so a long summary overran the margin at
+// every width, the default 92 included. CanonicalHelpTest passed throughout because DemoSet's prose
+// is short, which is exactly how a margin comes to mean "the columns only".
+
+// A constant, not a variable: an attribute argument has to be a constant expression.
+const WORDY = 'This prose is far longer than the declared margin and must therefore be wrapped by the renderer.';
+
+$wordy = new #[Cli(WORDY, width: HelpRenderer::MIN_WIDTH, before: WORDY, after: WORDY)] class extends Commands {
+    #[Command(WORDY, description: WORDY)]
+    public function commandA(): CommandResult
+    {
+        return CommandResult::nothing();
+    }
+};
+
+// The reported field, and the two siblings nobody named — before and after are prose printed the
+// same way and were overrunning the same margin.
+foreach ([['help'], ['help', 'a']] as $argv) {
+    $out = new BufferedOutput();
+    Assert::same(0, $wordy->handle(['x.php', ...$argv], $out), implode(' ', $argv));
+    foreach (explode("\n", $out->out) as $line) {
+        Assert::true(
+            mb_strlen($line) <= HelpRenderer::MIN_WIDTH,
+            implode(' ', $argv) . ' — line past the declared margin: ' . $line,
+        );
+    }
+}
+
+// A single set reaches its command's summary by a different branch, so it is checked on its own.
+$onlyWordy = new #[Cli(WORDY, single: true, width: HelpRenderer::MIN_WIDTH)] class extends Commands {
+    #[Command(WORDY)]
+    public function commandA(): CommandResult
+    {
+        return CommandResult::nothing();
+    }
+};
+
+$out = new BufferedOutput();
+Assert::same(0, $onlyWordy->handle(['x.php', '--help'], $out));
+foreach (explode("\n", $out->out) as $line) {
+    Assert::true(mb_strlen($line) <= HelpRenderer::MIN_WIDTH, 'single set — line past the margin: ' . $line);
+}
+
+// The accepted end: prose that chose its own line breaks keeps them, so a footer laid out by hand is
+// not reflowed into one paragraph.
+$laidOut = new #[Cli('Short.', after: "One.\nTwo.\n\nFour.")] class extends Commands {
+    #[Command('a')]
+    public function commandA(): CommandResult
+    {
+        return CommandResult::nothing();
+    }
+};
+
+$out = new BufferedOutput();
+$laidOut->handle(['x.php', 'help'], $out);
+Assert::contains("One.\nTwo.\n\nFour.", $out->out);
+
+// And short prose is untouched, which tests/unit/CanonicalHelpTest.phpt asserts byte for byte
+// against DemoHelp.expect — that file did not move when this landed.

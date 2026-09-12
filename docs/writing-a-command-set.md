@@ -107,8 +107,8 @@ numbered section that found it.
   questions and `allowEmpty` only answers the second one, for strings.
 - **Globals are restored after every call**, because repeated in-process `handle()` is supported.
 - **Exit codes are 0–255** (`fail()`: 1–255), checked where they are constructed.
-- **A summary is printed verbatim, not wrapped** — only `description` is. A long summary overruns
-  the margin at any `width`.
+- **`width` lays out every declared paragraph**, not only the columns — a summary, `before` and
+  `after` are wrapped to it, and prose that carries its own newlines keeps them.
 
 ## 10. Before you ship
 
