@@ -56,6 +56,10 @@ final class CommandSet extends Commands
 That is a complete CLI: `--help`, a generated usage block, `--titel` rejected with the list of
 options that do exist, `--title` with no value rejected, `--no-logo=false` rejected.
 
+How to design one of your own — what earns a command, which of the four errors to raise, what to
+snapshot, and the traps where the obvious reading is wrong — is in
+docs/writing-a-command-set.md.
+
 ## What you declare
 
 | | |
