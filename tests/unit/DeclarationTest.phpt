@@ -502,6 +502,30 @@ rejects('a format spanning lines', static fn() => new #[Cli('x')] #[CatchAs(Runt
 	}
 }, '~spans several lines~');
 
+rejects('a format spanning lines with carriage return', static fn() => new #[Cli('x')] #[CatchAs(RuntimeException::class, exitCode: 4, format: "broken\r%s")] class extends Commands {
+	#[Command('a')]
+	public function commandA(): CommandResult
+	{
+		return CommandResult::nothing();
+	}
+}, '~spans several lines~');
+
+rejects('a format spanning lines with a Unicode separator', static fn() => new #[Cli('x')] #[CatchAs(RuntimeException::class, exitCode: 4, format: "broken\u{2028}%s")] class extends Commands {
+	#[Command('a')]
+	public function commandA(): CommandResult
+	{
+		return CommandResult::nothing();
+	}
+}, '~spans several lines~');
+
+rejects('a format carrying a terminal escape', static fn() => new #[Cli('x')] #[CatchAs(RuntimeException::class, exitCode: 4, format: "broken \x1B[31m%s")] class extends Commands {
+	#[Command('a')]
+	public function commandA(): CommandResult
+	{
+		return CommandResult::nothing();
+	}
+}, '~contains terminal control characters~');
+
 rejects('a mapping the runner handles first', static fn() => new #[Cli('x')] #[CatchAs(UsageError::class, exitCode: 4)] class extends Commands {
 	#[Command('a')]
 	public function commandA(): CommandResult

@@ -8,6 +8,9 @@ use RuntimeException;
 
 final class StreamOutput implements Output
 {
+    /** Bound the amount copied again when a stream accepts only part of a write. */
+    private const WRITE_CHUNK_BYTES = 8192;
+
     /** @var resource */
     private $stdout;
 
@@ -43,8 +46,9 @@ final class StreamOutput implements Output
      */
     private function writeAll($stream, string $bytes, string $name): void
     {
-        for ($written = 0; $written < strlen($bytes);) {
-            $chunk = fwrite($stream, substr($bytes, $written));
+        $length = strlen($bytes);
+        for ($written = 0; $written < $length;) {
+            $chunk = fwrite($stream, substr($bytes, $written, self::WRITE_CHUNK_BYTES));
             if ($chunk === false || $chunk === 0) {
                 throw new RuntimeException("could not write to {$name}");
             }

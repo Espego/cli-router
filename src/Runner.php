@@ -36,7 +36,7 @@ final class Runner
         // The program name reaches the help text, so it is sanitised like anything else the process
         // did not author — and computed inside the try, where a diagnostic can still be reported.
         try {
-            $program = 'php ' . self::safe($argv[0] ?? 'script.php');
+            $program = 'php ' . Diagnostic::line($argv[0] ?? 'script.php');
 
             ['args' => $args, 'opts' => $opts, 'duplicates' => $duplicates] =
                 (new ArgumentParser())->parse(array_slice($argv, 1));
@@ -75,14 +75,14 @@ final class Runner
             $globals = $this->coercer->globals($set, $command, $opts);
             $arguments = $this->coercer->arguments($command, $opts, $args);
         } catch (UsageError $e) {
-            $output->err('error: ' . self::safe($e->getMessage()) . "\n");
+            $output->err(Diagnostic::line('error: ' . $e->getMessage()) . "\n");
 
             return $e->exitCode;
         } catch (InternalError $e) {
             // Coercion can raise one — a preg that fails rather than not matching — and this try
             // used to catch only UsageError, so it escaped uncaught from the phase whose whole job
             // is to keep engine errors away from the user. Reported exactly as dispatch reports it.
-            $output->err('internal error: ' . self::safe($e->getMessage()) . "\n");
+            $output->err(Diagnostic::line('internal error: ' . $e->getMessage()) . "\n");
 
             return self::EXIT_INTERNAL;
         }
@@ -122,13 +122,13 @@ final class Runner
                 }
             }
         } catch (UsageError $e) {
-            $output->err('error: ' . self::safe($e->getMessage()) . "\n");
+            $output->err(Diagnostic::line('error: ' . $e->getMessage()) . "\n");
 
             return $e->exitCode;
         } catch (Stop $e) {
             $result = $e->result;
         } catch (InternalError $e) {
-            $output->err('internal error: ' . self::safe($e->getMessage()) . "\n");
+            $output->err(Diagnostic::line('internal error: ' . $e->getMessage()) . "\n");
 
             return self::EXIT_INTERNAL;
         } catch (DeclarationError $e) {
@@ -146,7 +146,7 @@ final class Runner
                 // how a broken deployment comes to look like a clean refusal.
                 throw $e;
             }
-            $output->err(sprintf($mapped->format, self::safe($e->getMessage())) . "\n");
+            $output->err(Diagnostic::line(sprintf($mapped->format, $e->getMessage())) . "\n");
 
             return $mapped->exitCode;
         }
@@ -192,7 +192,7 @@ final class Runner
         }
 
         foreach ($result->notices as $line) {
-            $output->err($line . "\n");
+            $output->err(Diagnostic::line($line) . "\n");
         }
 
         if ($payload !== null) {
@@ -200,28 +200,10 @@ final class Runner
         }
 
         foreach ($result->warnings as $line) {
-            $output->err($line . "\n");
+            $output->err(Diagnostic::line($line) . "\n");
         }
 
         return $result->exitCode;
-    }
-
-    /**
-     * Diagnostics quote things the process did not author — an argument the user typed, a message
-     * from an upstream system. Those reach a terminal, where an escape sequence is executed rather
-     * than shown, and a newline forges what looks like a second line of our own output.
-     */
-    private static function safe(string $message): string
-    {
-        // No /u, deliberately. Every byte in this class is a single byte in UTF-8 and never a
-        // continuation byte, so matching bytes is both correct and total — where the /u form
-        // returned null for malformed input and the cast turned that into the empty string, so a
-        // diagnostic about bad bytes was itself erased by them and `error:` was the whole message.
-        $stripped = (string) preg_replace('/[\x00-\x1F\x7F]/', '?', $message);
-
-        // An exception from elsewhere may still carry bytes argv could not: mb_scrub replaces them
-        // rather than letting them reach a terminal.
-        return mb_scrub($stripped, 'UTF-8');
     }
 
     /**
@@ -276,7 +258,8 @@ final class Runner
     private function empty(SetInfo $set, Output $output, string $program): int
     {
         if ($set->meta->onEmpty === WhenEmpty::Error) {
-            $output->err('error: ' . ($set->meta->emptyMessage ?? "nothing to do. Run: {$program} --help") . "\n");
+            $message = $set->meta->emptyMessage ?? "nothing to do. Run: {$program} --help";
+            $output->err(Diagnostic::line('error: ' . $message) . "\n");
 
             return 1;
         }

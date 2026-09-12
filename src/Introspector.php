@@ -370,9 +370,16 @@ final class Introspector
      */
     private function assertFormat(CatchAs $catch, string $where): void
     {
-        if (str_contains($catch->format, "\n")) {
+        if (Diagnostic::spansLines($catch->format)) {
             throw new DeclarationError(sprintf(
                 '%s: #[CatchAs(%s)] format spans several lines. A mapped exception reports one.',
+                $where,
+                $catch->exception,
+            ));
+        }
+        if (Diagnostic::line($catch->format) !== $catch->format) {
+            throw new DeclarationError(sprintf(
+                '%s: #[CatchAs(%s)] format contains terminal control characters.',
                 $where,
                 $catch->exception,
             ));

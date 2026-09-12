@@ -83,8 +83,36 @@ final class PartialStream
     }
 }
 
+/** Records the largest write request, so a large payload cannot silently become one large copy. */
+final class ChunkedStream
+{
+    public static int $largestWrite = 0;
+
+    /** @var resource|null */
+    public $context;
+
+    public function stream_open(string $path, string $mode, int $options, ?string &$opened): bool
+    {
+        self::$largestWrite = 0;
+
+        return true;
+    }
+
+    public function stream_write(string $data): int
+    {
+        self::$largestWrite = max(self::$largestWrite, strlen($data));
+
+        return strlen($data);
+    }
+
+    public function stream_close(): void
+    {
+    }
+}
+
 stream_wrapper_register('refusing', RefusingStream::class);
 stream_wrapper_register('partial', PartialStream::class);
+stream_wrapper_register('chunked', ChunkedStream::class);
 
 /** @return array{int, string, string} */
 function edge(array $argv): array
@@ -260,6 +288,11 @@ assert(is_resource($partial));
 $counted = new StreamOutput($partial);
 $counted->out(str_repeat('x', 10));
 Assert::same(10, PartialStream::$written, 'a short write must be resumed, not dropped');
+
+$chunked = fopen('chunked://void', 'w');
+assert(is_resource($chunked));
+(new StreamOutput($chunked))->out(str_repeat('x', 20_000));
+Assert::true(ChunkedStream::$largestWrite <= 8192, 'a large payload must be written in bounded chunks');
 
 // --- 9. Invocation context must not outlive the call ---------------------------------------------
 //
@@ -1207,3 +1240,67 @@ Assert::contains('"nullable": ""', $out->out);
 $out = new BufferedOutput();
 Assert::same(0, $empties->handle(['x.php'], $out));
 Assert::contains('"nullable": "NOT GIVEN"', $out->out);
+
+// --- 31. A diagnostic line must not be executable terminal input -------------------------------
+//
+// Usage errors sanitised ASCII controls, but valid UTF-8 line separators and bidi controls could
+// still alter what a human saw. CommandResult's notices and warnings were worse: although their API
+// calls each value a line, they emitted newlines and ANSI sequences verbatim.
+
+const UNSAFE_DIAGNOSTIC = "left\x1B[31m\r\n\u{0085}\u{2028}\u{2029}\u{061C}\u{200E}\u{200F}"
+    . "\u{202A}\u{202E}\u{2066}\u{2069}right";
+const SAFE_DIAGNOSTIC = 'left?[31m????????????right';
+
+$safeLines = new #[Cli('x', single: true)] class extends Commands {
+    #[Command('a')]
+    public function commandA(#[Arg] string $value): CommandResult
+    {
+        return CommandResult::text("raw \x1B[31m\n")
+            ->withNotice('notice: ' . $value)
+            ->withWarning('warning: ' . $value);
+    }
+};
+
+$out = new BufferedOutput();
+Assert::same(0, $safeLines->handle(['x.php', UNSAFE_DIAGNOSTIC], $out));
+Assert::same("raw \x1B[31m\n", $out->out, 'CommandResult::text() is intentionally raw');
+Assert::same(
+    'notice: ' . SAFE_DIAGNOSTIC . "\nwarning: " . SAFE_DIAGNOSTIC . "\n",
+    $out->err,
+);
+
+// Values echoed by the router itself pass through the same one-line sink.
+$out = new BufferedOutput();
+Assert::same(1, $safeLines->handle(['x.php', 'accepted', UNSAFE_DIAGNOSTIC], $out));
+Assert::same("error: unexpected argument: '" . SAFE_DIAGNOSTIC . "'\n", $out->err);
+
+// So do exception messages from an upstream system, after the consumer's CatchAs format is applied.
+// Such a message need not have passed through argv, so malformed UTF-8 is scrubbed before the
+// Unicode controls are inspected.
+$mappedUnsafe = new #[Cli('x', single: true, onEmpty: WhenEmpty::Run)]
+    #[CatchAs(RuntimeException::class, exitCode: 4, format: 'refused: %s')]
+    class extends Commands {
+        #[Command('a')]
+        public function commandA(): CommandResult
+        {
+            throw new RuntimeException(UNSAFE_DIAGNOSTIC . "\xC3\x28");
+        }
+    };
+
+$out = new BufferedOutput();
+Assert::same(4, $mappedUnsafe->handle(['x.php'], $out));
+Assert::same('refused: ' . SAFE_DIAGNOSTIC . "?(\n", $out->err);
+
+// WhenEmpty::Error promises one line too; declaration-authored prose does not bypass the sink.
+$unsafeEmpty = new #[Cli('x', single: true, onEmpty: WhenEmpty::Error, emptyMessage: "no\rforged")]
+    class extends Commands {
+        #[Command('a')]
+        public function commandA(): CommandResult
+        {
+            return CommandResult::nothing();
+        }
+    };
+
+$out = new BufferedOutput();
+Assert::same(1, $unsafeEmpty->handle(['x.php'], $out));
+Assert::same("error: no?forged\n", $out->err);

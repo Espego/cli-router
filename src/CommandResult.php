@@ -58,7 +58,7 @@ final class CommandResult
         return new self($exitCode, null, null, false, [], []);
     }
 
-    /** A line that frames what follows. */
+    /** A line that frames what follows. The runner makes it inert before writing it to stderr. */
     public function withNotice(string ...$lines): self
     {
         $notices = $this->notices;
@@ -69,7 +69,7 @@ final class CommandResult
         return new self($this->exitCode, $this->text, $this->json, $this->hasJson, $notices, $this->warnings);
     }
 
-    /** A line that qualifies what was just printed. */
+    /** A line that qualifies what was printed. The runner makes it inert before writing it to stderr. */
     public function withWarning(string ...$lines): self
     {
         $warnings = $this->warnings;

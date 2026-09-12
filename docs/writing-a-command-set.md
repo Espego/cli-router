@@ -101,6 +101,22 @@ of 0 prints a diagnostic and then reports that all is well.
 several frames down. `stop()` exists for a decision made deep in a helper and is rare on purpose —
 all three are documented where they are declared, in `src/Commands.php`.
 
+### The security boundary
+
+`withNotice()` and `withWarning()` are terminal-safe lines: before writing them, the runner replaces
+control characters, Unicode line separators and explicit bidirectional controls. The same rule
+protects usage errors and mapped exception messages, so an upstream response cannot add a forged
+line or a terminal escape sequence.
+
+`CommandResult::text()` and writes through `output()` are deliberately **raw bytes**. They are the
+application's renderer and progress channel, where tables, colours and multi-line output may be
+intentional; never interpolate untrusted text into them without escaping it for that renderer.
+
+Finally, CLI validation establishes a PHP value, not permission to use it anywhere. It is not shell
+escaping, SQL parameterisation, path containment or authorisation. Pass subprocess arguments as an
+array, parameterise database queries, constrain paths at the point of use, and perform the same
+permission checks the command's underlying operation requires.
+
 ## 6. Which error to raise
 
 | Situation | Raise | Declared in | Type raised |
