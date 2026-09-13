@@ -342,6 +342,30 @@ rejects('a variadic of lists', static fn() => new #[Cli('x')] class extends Comm
 	}
 }, '~a variadic of lists gives minCount two meanings~');
 
+rejects('a required list with no empty-input policy', static fn() => new #[Cli('x')] class extends Commands {
+	#[Command('a')]
+	public function commandA(#[Opt('u')] StringList $v): CommandResult
+	{
+		return CommandResult::nothing();
+	}
+}, '~required ValueList needs minCount: 0.*or minCount: 1~');
+
+rejects('the helpPages overview key as a command', static fn() => new #[Cli('x')] class extends Commands {
+	#[Command('a')]
+	public function overview(): CommandResult
+	{
+		return CommandResult::nothing();
+	}
+}, '~overview.*reserved by helpPages~');
+
+rejects('DateTimeImmutable without an explicit timezone', static fn() => new #[Cli('x')] class extends Commands {
+	#[Command('a')]
+	public function commandA(#[Opt('u')] ?DateTimeImmutable $v = null): CommandResult
+	{
+		return CommandResult::nothing();
+	}
+}, '~DateTimeImmutable value needs an explicit timezone~');
+
 // --- One declaration per symbol ----------------------------------------------------------------
 //
 // Both attributes used to be read and the first silently won, so the help described the loser.
@@ -601,6 +625,11 @@ $ok = new #[Cli('x')] #[CatchAs(RuntimeException::class, exitCode: 4, format: 'r
 
 	#[Opt('A gated global.', onlyWhen: Mutates::class)]
 	public bool $confirm = false;
+
+	protected function dateTimeZone(): \DateTimeZone
+	{
+		return new \DateTimeZone('Europe/Prague');
+	}
 
 	// The marker has to be carried by something: a gate no command passes through offers the
 	// option to nothing, and this fixture is what proves the accepted end is still accepted.

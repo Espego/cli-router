@@ -1,7 +1,7 @@
 Demo CLI.
 
   php demo.php <command> [options]
-  php demo.php help [<command>]
+  php demo.php help [<command>] [--json]
 
 Read:
   env                    Say which host.

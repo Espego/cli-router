@@ -1,7 +1,7 @@
 Keep a short list of notes.
 
   php notes.php <command> [options]
-  php notes.php help [<command>]
+  php notes.php help [<command>] [--json]
 
 Read:
   list [--priority=<low|normal|high>] [--tag=<tag>[,<tag>...]] [--limit=<n>]

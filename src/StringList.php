@@ -11,8 +11,8 @@ use Traversable;
  * `--msa=IC01,IC02,IC03`.
  *
  * Declare the parameter as `StringList $msa` and the element type is stated once, in the signature.
- * An empty list is a real answer — "given, and empty" is not the same as "not given", which is
- * `?StringList $msa = null`.
+ * An empty list is a real answer when a required declaration explicitly says `minCount: 0` —
+ * "given, and empty" is not the same as "not given", which is `?StringList $msa = null`.
  */
 final class StringList implements ValueList
 {

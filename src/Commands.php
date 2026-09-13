@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Espego\CliRouter;
 
+use DateTimeZone;
 use LogicException;
 
 /**
@@ -59,6 +60,57 @@ abstract class Commands
     }
 
     /**
+     * Run the complete CLI in memory, keeping its two streams separate.
+     *
+     * @param list<string> $argv WITH the script name at [0].
+     * @return array{int, string, string} Exit code, stdout, stderr.
+     */
+    final public function handleBuffered(array $argv): array
+    {
+        $output = new BufferedOutput();
+        $code = $this->handle($argv, $output);
+
+        return [$code, $output->out, $output->err];
+    }
+
+    /** @return list<string> Every command, including ones hidden from the overview. */
+    final public function commandNames(): array
+    {
+        return (new Introspector())->set($this)->names();
+    }
+
+    /**
+     * Render the overview and every command page from one introspection.
+     *
+     * @return array<string, string> `overview`, followed by one entry per command.
+     */
+    final public function helpPages(string $script): array
+    {
+        $set = (new Introspector())->set($this);
+        $renderer = new HelpRenderer();
+        $program = 'php ' . Diagnostic::line($script);
+        $pages = [
+            'overview' => $renderer->render($set, null, $program),
+        ];
+
+        if (! $set->meta->single) {
+            foreach ($set->commands as $command) {
+                $pages[$command->name] = $renderer->render($set, $command->name, $program);
+            }
+        }
+
+        return $pages;
+    }
+
+    /** @return array<string, mixed> A stable, machine-readable description of this CLI. */
+    final public function helpData(): array
+    {
+        $set = (new Introspector())->set($this);
+
+        return (new HelpData())->set($set);
+    }
+
+    /**
      * The real argv, filtered to strings so a malformed $_SERVER cannot reach the parser.
      *
      * @return list<string>
@@ -82,6 +134,17 @@ abstract class Commands
     protected function middleware(): array
     {
         return [];
+    }
+
+    /**
+     * The context for parsing DateTimeImmutable values.
+     *
+     * Override this when the set declares a DateTimeImmutable parameter. Returning null there is a
+     * declaration error: date parsing must not depend on the process-wide date.timezone setting.
+     */
+    protected function dateTimeZone(): ?DateTimeZone
+    {
+        return null;
     }
 
     /** Which command is running. Lets a message name the command without repeating it as a literal. */
@@ -138,5 +201,11 @@ abstract class Commands
     final public function middlewareStack(): array
     {
         return $this->middleware();
+    }
+
+    /** @internal Called by Introspector after it finds a DateTimeImmutable declaration. */
+    final public function coercionTimeZone(): ?DateTimeZone
+    {
+        return $this->dateTimeZone();
     }
 }

@@ -356,7 +356,6 @@ declare(strict_types=1);
 
 require __DIR__ . '/../bootstrap.php';
 
-use Espego\CliRouter\BufferedOutput;
 use Espego\CliRouter\StringList;
 use Espego\CliRouter\Tests\Documentation\NoteSet;
 use Espego\CliRouter\Tests\Documentation\NoteStore;
@@ -374,10 +373,7 @@ function set(): NoteSet
 /** @return array{int, string, string} exit code, stdout, stderr */
 function cli(string ...$argv): array
 {
-	$out = new BufferedOutput();
-	$code = set()->handle(['notes.php', ...$argv], $out);
-
-	return [$code, $out->out, $out->err];
+	return set()->handleBuffered(['notes.php', ...$argv]);
 }
 
 
@@ -443,10 +439,13 @@ Assert::contains('"detail": "Before October."', $out);
 
 // A substring assertion is not a substitute: it passes just as happily when a command has
 // silently vanished, a column has moved, or the output has been truncated.
+$pages = set()->helpPages('notes.php');
 [$code, $out, $err] = cli('help');
 Assert::same(0, $code);
 Assert::same('', $err, 'help belongs on stdout, so `--help | less` works');
-Assert::matchFile(__DIR__ . '/DocumentationExampleHelp.expect', $out);
+Assert::matchFile(__DIR__ . '/DocumentationExampleHelp.expect', $pages['overview']);
+Assert::same($pages['overview'], $out);
+Assert::same(['overview', 'list', 'show', 'add', 'edit'], array_keys($pages));
 
 // `help` and `--help` are the same page.
 Assert::same($out, cli('--help')[1]);
@@ -460,7 +459,7 @@ Assert::same($out, cli('--help')[1]);
 Keep a short list of notes.
 
   php notes.php <command> [options]
-  php notes.php help [<command>]
+  php notes.php help [<command>] [--json]
 
 Read:
   list [--priority=<low|normal|high>] [--tag=<tag>[,<tag>...]] [--limit=<n>]

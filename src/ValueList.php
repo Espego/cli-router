@@ -20,6 +20,9 @@ use IteratorAggregate;
  * and the error messages stay in the coercer, so `--ids=1,x,3` reports the same way a plain `int`
  * option would.
  *
+ * A required parameter must declare `minCount: 0` when an explicit empty list has meaning, or
+ * `minCount: 1` (or more) when it must be refused. Introspection rejects an omitted policy.
+ *
  * @extends IteratorAggregate<int, mixed>
  */
 interface ValueList extends IteratorAggregate, Countable

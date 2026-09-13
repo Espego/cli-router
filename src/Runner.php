@@ -24,6 +24,7 @@ final class Runner
         private readonly Introspector $introspector = new Introspector(),
         private readonly Coercer $coercer = new Coercer(),
         private readonly HelpRenderer $help = new HelpRenderer(),
+        private readonly HelpData $helpData = new HelpData(),
         private readonly int $jsonFlags = JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES,
     ) {
     }
@@ -52,15 +53,24 @@ final class Runner
                 ));
             }
 
-            $topic = $this->helpTopic($set, $args, $opts);
-            if ($topic !== false) {
+            $help = $this->helpRequest($set, $args, $opts);
+            if ($help !== null) {
                 // A help request skips required-ness and coercion — that is what lets --help answer
                 // for a command whose options are mandatory — but not the option NAMES. Without
                 // this, `save --help --bogus` printed the help and exited 0: the malformed-help
                 // defect in its last costume, an answer to a question nobody asked, called success.
-                $this->assertKnownOptions($set, $this->helpSubject($set, $topic), $opts, $program);
+                if (! $help['json']) {
+                    $this->assertKnownOptions($set, $this->helpSubject($set, $help['topic']), $opts, $program);
+                }
 
-                $output->out($this->help->render($set, $topic, $program));
+                $payload = $help['json']
+                    ? ($help['topic'] === null
+                        ? $this->helpData->set($set)
+                        : $this->helpData->command($set, $set->get($help['topic'])))
+                    : $this->help->render($set, $help['topic'], $program);
+                $output->out(is_string($payload)
+                    ? $payload
+                    : json_encode($payload, $this->jsonFlags | JSON_THROW_ON_ERROR) . "\n");
 
                 return 0;
             }
@@ -73,7 +83,7 @@ final class Runner
             $this->assertKnownOptions($set, $command, $opts, $program);
 
             $globals = $this->coercer->globals($set, $command, $opts);
-            $arguments = $this->coercer->arguments($command, $opts, $args);
+            $arguments = $this->coercer->arguments($set, $command, $opts, $args);
         } catch (UsageError $e) {
             $output->err(Diagnostic::line('error: ' . $e->getMessage()) . "\n");
 
@@ -209,10 +219,9 @@ final class Runner
     /**
      * @param list<string> $args
      * @param array<string, string|true> $opts
-     * @return string|null|false The command to describe, null for the whole script, false if this
-     *     is not a help request at all.
+     * @return array{topic: string|null, json: bool}|null
      */
-    private function helpTopic(SetInfo $set, array $args, array $opts): string|null|false
+    private function helpRequest(SetInfo $set, array $args, array $opts): ?array
     {
         if (! $set->meta->single && ($args[0] ?? null) === 'help') {
             $topic = $args[1] ?? null;
@@ -222,17 +231,24 @@ final class Runner
             if (count($args) > 2) {
                 throw new UsageError('help describes one command. Run: help ' . ($topic ?? '<command>'));
             }
-            // This branch used to return before it had looked at the options at all, so
-            // `help save --help=false` and `help --bogus` both rendered help and exited 0.
-            if ($opts !== []) {
+            // The built-in help owns one flag. It is deliberately scoped to `help`, so a command's
+            // own --json remains an ordinary option and `<command> --help` stays text.
+            $unknown = array_diff(array_keys($opts), ['json']);
+            if ($unknown !== []) {
                 throw new UsageError('help takes no options');
             }
+            if (isset($opts['json']) && $opts['json'] !== true) {
+                throw new UsageError('--json is a flag and takes no value');
+            }
 
-            return $topic;
+            return [
+                'topic' => $topic,
+                'json' => isset($opts['json']),
+            ];
         }
 
         if (! array_key_exists('help', $opts)) {
-            return false;
+            return null;
         }
 
         // Built-in help is a flag like any other, and `--help=false` reads as "do not show help" to
@@ -246,13 +262,19 @@ final class Runner
         // without the options the command would otherwise require.
         $named = $args[0] ?? null;
         if ($set->meta->single || $named === null) {
-            return null;
+            return [
+                'topic' => null,
+                'json' => false,
+            ];
         }
         if (! $set->has($named)) {
             throw new UsageError("unknown command '{$named}'. Accepted: " . implode(', ', $set->names()) . '.');
         }
 
-        return $named;
+        return [
+            'topic' => $named,
+            'json' => false,
+        ];
     }
 
     private function empty(SetInfo $set, Output $output, string $program): int

@@ -66,8 +66,19 @@ Assert::same("error: --count must be a whole number. Got 'abc'.\n", $err);
 [, , $err] = run(['typed', '--colour=red', '--count=99']);
 Assert::same("error: --count must be at most 10. Got '99'.\n", $err);
 
-// Dates parse through DateTimeImmutable, and a parse failure is bad usage, not a stack trace.
-Assert::same('2026-03-04', json(['typed', '--colour=red', '--at=2026-03-04'])['at']);
+// Dates use the set's explicit timezone even when the process has another one. An offset written
+// in the value remains authoritative, as DateTimeImmutable promises.
+$processTimeZone = date_default_timezone_get();
+date_default_timezone_set('UTC');
+try {
+	Assert::same('2026-03-04T00:00:00+01:00', json(['typed', '--colour=red', '--at=2026-03-04'])['at']);
+	Assert::same('2026-08-19T14:34:36+02:00', json(['typed', '--colour=red', '--at=2026-08-19 14:34:36'])['at']);
+	Assert::same('2026-08-19T14:34:36+01:00', json(['typed', '--colour=red', '--at=2026-08-19T14:34:36+01:00'])['at']);
+} finally {
+	date_default_timezone_set($processTimeZone);
+}
+
+// A parse failure is bad usage, not a stack trace.
 [$code, , $err] = run(['typed', '--colour=red', '--at=nonsense']);
 Assert::same(1, $code);
 Assert::contains('error: cannot parse --at:', $err);
@@ -99,6 +110,11 @@ Assert::same("error: invalid --colours 'purple'. Allowed: red, green, blue.\n", 
 
 // Stray separators and whitespace are dropped rather than becoming empty elements.
 Assert::same(['A', 'B'], json(['events', '--msa= A , ,B '])['msa']);
+
+// A required list must declare its empty-input policy; this one chose at least one.
+[$code, , $err] = run(['events', '--msa=']);
+Assert::same(1, $code);
+Assert::same("error: at least 1 <msaNr> are required\n", $err);
 
 // Absent stays null; given-but-empty is an empty list. The two are different answers.
 Assert::same(null, json(['events', '--msa=X'])['ids']);

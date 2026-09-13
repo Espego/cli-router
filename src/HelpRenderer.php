@@ -117,7 +117,7 @@ final class HelpRenderer
             return $this->hanging("  {$program} ", $this->synopsis($set->only()), $set->meta->width);
         }
 
-        return "  {$program} <command> [options]\n  {$program} help [<command>]";
+        return "  {$program} <command> [options]\n  {$program} help [<command>] [--json]";
     }
 
     /** @return list<string> */
@@ -309,6 +309,9 @@ final class HelpRenderer
     {
         if ($meta->minCount !== null && $meta->maxCount !== null) {
             return sprintf('Between %d and %d %s.', $meta->minCount, $meta->maxCount, $this->values($meta->maxCount));
+        }
+        if ($meta->minCount === 0) {
+            return 'May be empty.';
         }
         if ($meta->minCount !== null) {
             return sprintf('At least %d %s.', $meta->minCount, $this->values($meta->minCount));

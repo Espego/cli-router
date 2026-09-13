@@ -33,7 +33,7 @@ final class EdgeSet extends Commands
     }
 
     #[Command('Take a list of int-backed enums.')]
-    public function commandLevels(#[Opt('How loud, repeatedly.')] LevelList $levels): CommandResult
+    public function commandLevels(#[Opt('How loud, repeatedly.', minCount: 1)] LevelList $levels): CommandResult
     {
         return CommandResult::json(array_map(static fn (Level $l): int => $l->value, $levels->all()));
     }
@@ -72,7 +72,7 @@ final class EdgeSet extends Commands
     /** trim: false used to apply to the whole value and not to the elements it was split into. */
     #[Command('Take a list without trimming it.')]
     public function commandLoose(
-        #[Opt('An untrimmed element.', placeholder: 'raw', trim: false)]
+        #[Opt('An untrimmed element.', placeholder: 'raw', minCount: 0, trim: false)]
         StringList $loose,
     ): CommandResult {
         return CommandResult::json($loose->all());

@@ -24,7 +24,8 @@ abstract class Param
      * @param string|null $hint Sentence appended to a constraint failure.
      * @param int|float|null $min Smallest accepted value, for int and float.
      * @param int|float|null $max Largest accepted value, for int and float.
-     * @param int|null $minCount Fewest accepted elements, for a list or a variadic.
+     * @param int|null $minCount Fewest accepted elements, for a list or a variadic. Required lists
+     *     must state this; zero explicitly permits an empty list.
      * @param int|null $maxCount Most accepted elements, for a list or a variadic.
      * @param bool $allowEmpty Accept `--x=` as the empty string rather than refusing it.
      * @param bool $trim Trim the raw value before coercing it.

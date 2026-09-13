@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Espego\CliRouter\Tests;
 
 use DateTimeImmutable;
+use DateTimeZone;
 use Espego\CliRouter\CatchAs;
 use Espego\CliRouter\Cli;
 use Espego\CliRouter\Command;
@@ -35,6 +36,11 @@ final class DemoSet extends Commands
         return [new Trace()];
     }
 
+    protected function dateTimeZone(): DateTimeZone
+    {
+        return new DateTimeZone('Europe/Prague');
+    }
+
     #[Command(summary: 'Say which host.', group: 'Read')]
     public function commandEnv(): CommandResult
     {
@@ -58,7 +64,7 @@ final class DemoSet extends Commands
     // the signature is the only place it is written.
     #[Command(summary: 'Comma-separated values.', group: 'Read')]
     public function commandEvents(
-        #[Opt('MSA numbers.', placeholder: 'msaNr')]
+        #[Opt('MSA numbers.', placeholder: 'msaNr', minCount: 1)]
         StringList $msa,
         #[Opt('Numeric ids.', placeholder: 'id')]
         ?IntList $ids = null,
@@ -91,7 +97,7 @@ final class DemoSet extends Commands
         return CommandResult::json([
             'colour' => $colour->value,
             'count' => $count,
-            'at' => $at?->format('Y-m-d'),
+            'at' => $at?->format(DATE_ATOM),
             'on' => $on,
             'note' => $note,
         ]);

@@ -84,7 +84,9 @@ function isAllowed(string $path): bool
 {
     return $path === 'README.md'
         || $path === 'composer.json'
-        || (str_starts_with($path, 'docs/') && str_ends_with($path, '.md'))
+        || (str_starts_with($path, 'docs/')
+            && ! str_starts_with($path, 'docs/for_agents/')
+            && str_ends_with($path, '.md'))
         || (str_starts_with($path, 'src/') && str_ends_with($path, '.php'));
 }
 

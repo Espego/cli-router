@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Espego\CliRouter;
 
+use DateTimeZone;
 use Throwable;
 
 /** @internal Not part of the public surface; may change in any release. */
@@ -19,6 +20,7 @@ final class SetInfo
         public readonly array $commands,
         public readonly array $globals,
         public readonly array $catches,
+        public readonly ?DateTimeZone $dateTimeZone,
     ) {
     }
 

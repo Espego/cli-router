@@ -39,6 +39,11 @@ introspection, so it cannot be declared where it could only ever produce a usage
   repeating the option on every write command; `src/Opt.php` documents it where it is declared, and
   `docs/worked-example.md` has it wired up end to end.
 
+A large set can split its methods into traits such as `ReadCommands` and `WriteCommands`. Imported
+commands keep their command, group and marker attributes, see the using set's globals, and can call
+`fail()`, `output()` and `invocation()` like methods written directly on the set. The shadowing rule
+is documented in §10.
+
 ## 3. Push meaning into the type
 
 Each of these moves a rule out of the body *and* into the generated help at the same time:
@@ -53,7 +58,7 @@ Each of these moves a rule out of the body *and* into the generated help at the 
 A multi-value option is a **type**, not an `array` with a docblock:
 
 ```php
-#[Opt('MSA numbers.', placeholder: 'msaNr')]
+#[Opt('MSA numbers.', placeholder: 'msaNr', minCount: 1)]
 StringList $msa,                    // --msa=IC01,IC02
 
 #[Opt('Instance ids.', placeholder: 'id')]
@@ -76,6 +81,23 @@ than rejecting the whole value.
 
 What the type genuinely cannot say goes in the attribute. The full parameter list, with what each
 one is for, is the constructor docblock of `src/Param.php` — read that rather than a copy of it.
+
+A required `ValueList` must make one extra decision explicitly: `minCount: 0` says `--msa=` is a
+meaningful empty filter, while `minCount: 1` (or more) refuses it. Omitting `minCount` is a
+declaration error because an accidental empty filter can broaden a query instead of narrowing it.
+
+`DateTimeImmutable` also needs explicit context. Override `dateTimeZone()` on every set that
+declares one; the coercer passes this object into `DateTimeImmutable` and never reads the process's
+ambient `date.timezone`:
+
+```php
+protected function dateTimeZone(): DateTimeZone
+{
+    return new DateTimeZone('Europe/Prague');
+}
+```
+
+An offset carried by the input itself remains authoritative.
 
 ## 4. Names come from the code
 
@@ -111,6 +133,8 @@ line or a terminal escape sequence.
 `CommandResult::text()` and writes through `output()` are deliberately **raw bytes**. They are the
 application's renderer and progress channel, where tables, colours and multi-line output may be
 intentional; never interpolate untrusted text into them without escaping it for that renderer.
+For an application-authored one-line message, pass untrusted parts through the public
+`Diagnostic::line()` boundary before writing them.
 
 Finally, CLI validation establishes a PHP value, not permission to use it anywhere. It is not shell
 escaping, SQL parameterisation, path containment or authorisation. Pass subprocess arguments as an
@@ -137,11 +161,20 @@ as a structure to adapt: replace its bootstrap, imports, fixtures, commands and 
 your project's own, keeping the three levels of coverage.
 
 1. **The body**, called directly with named arguments — no process, no argv.
-2. **The whole CLI**, via `handle()` with a `BufferedOutput`, asserting the exit code and the two
-   streams separately.
-3. **The help, byte for byte**, against a checked-in file. The worked example includes one. A
-   substring assertion is not a substitute: it passes just as happily when a command has silently
-   vanished or a column has moved.
+2. **The whole CLI**, via `handleBuffered()`, destructuring `[exitCode, stdout, stderr]`.
+3. **The help, byte for byte**, from `helpPages()` against a checked-in value. The worked example
+   includes one. A substring assertion is not a substitute: it passes just as happily when a
+   command has silently vanished or a column has moved.
+
+`commandNames()` returns all declared names, including hidden commands. `helpPages('script.php')`
+returns the flat map `['overview' => string, commandName => string, ...]`, ready for one snapshot or
+`implode()`; a single-command set returns only `overview`. For tools and agents, `helpData()`
+returns the declaration as a JSON-safe array. Its `commands` map carries summaries, descriptions,
+groups, arguments and effective options; each value states its PHP and CLI names, synopsis, type,
+list element type, backed-enum values, requiredness, nullability, default and constraints, and the
+set records its date timezone. The same canonical data is printed by
+`help --json`, while `help <command> --json` selects one command. The special `--json` belongs only
+to the built-in `help` command and does not reserve that option name for ordinary commands.
 
 ## 8. The first run is the design review
 
@@ -156,7 +189,8 @@ Each of these was measured, and each is asserted in the package's own regression
 
 - **Everything resolves before a command body exists.** Help, an unknown command, an unknown option
   and every type, pattern or range failure are answered before any middleware runs. A mistyped flag
-  costs an error message and nothing else, whatever the command would have gone on to do.
+  costs an error message and nothing else, whatever the command would have gone on to do. Context
+  needed by date coercion comes from `dateTimeZone()`, not from middleware or process state.
 - **A repeated option is an error, not last-wins.** `--confirm=false --confirm` does not mean `true`.
   Keeping the last occurrence let a malformed `--confirm=false` be rescued by a later bare
   `--confirm` and the write go ahead.
@@ -198,6 +232,19 @@ apply, or contradicts itself, or that the declared default already violates — 
 to true and so can never take another value; and a `#[CatchAs]` whose exit code is outside 1-255,
 whose format is not one `%s`, that names something the runner has already handled, or that covers
 faults rather than a considered no — `Throwable` and the engine's `Error`s stay uncaught.
+
+The command name `overview` is reserved as the stable script-level key returned by `helpPages()`.
+
+A `#[Command]` declared in a trait is also refused when a method of the same name in the using
+class shadows it. PHP silently prefers the class method, so without this check the trait command
+disappears from dispatch and help. This is refused even if the class method has its own
+`#[Command]`: declare a command in one place, remove the trait's attribute for deliberate
+specialisation, or keep the trait method under an `as` alias.
+
+A required `ValueList` without `minCount` is refused for the same reason: its declaration has not
+said whether an explicitly empty value is safe. A `DateTimeImmutable` declaration without a
+`dateTimeZone()` is refused rather than inheriting whichever process-wide zone happened to be set
+before introspection.
 
 Two more classes go the same way. A default is held to everything a typed value meets, so a list
 default whose elements are not the type the list declares is refused — PHP checks only the list

@@ -20,6 +20,7 @@ use Espego\CliRouter\Command;
 use Espego\CliRouter\CommandResult;
 use Espego\CliRouter\Commands;
 use Espego\CliRouter\DeclarationError;
+use Espego\CliRouter\Diagnostic;
 use Espego\CliRouter\HelpRenderer;
 use Espego\CliRouter\IntList;
 use Espego\CliRouter\Introspector;
@@ -367,6 +368,9 @@ Assert::same([' a ', ' b '], json_decode(edge(['loose', '--loose= a , b '])[1], 
 
 // Stray separators are still dropped: `--loose=a,,b` is two elements whatever the trimming says.
 Assert::same(['a', 'b'], json_decode(edge(['loose', '--loose=a,,b'])[1], true));
+
+// minCount: 0 is the required list's explicit statement that an empty list has meaning.
+Assert::same([], json_decode(edge(['loose', '--loose='])[1], true));
 
 // --- 13. A variadic that insists is not optional --------------------------------------------------
 //
@@ -1250,6 +1254,9 @@ Assert::contains('"nullable": "NOT GIVEN"', $out->out);
 const UNSAFE_DIAGNOSTIC = "left\x1B[31m\r\n\u{0085}\u{2028}\u{2029}\u{061C}\u{200E}\u{200F}"
     . "\u{202A}\u{202E}\u{2066}\u{2069}right";
 const SAFE_DIAGNOSTIC = 'left?[31m????????????right';
+
+// Consumers use the same public boundary before writing their own diagnostic lines.
+Assert::same(SAFE_DIAGNOSTIC, Diagnostic::line(UNSAFE_DIAGNOSTIC));
 
 $safeLines = new #[Cli('x', single: true)] class extends Commands {
     #[Command('a')]

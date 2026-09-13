@@ -1,0 +1,125 @@
+Demo CLI.
+
+  php demo.php <command> [options]
+  php demo.php help [<command>] [--json]
+
+Read:
+  env                    Say which host.
+  contracts [--nr=<nr>]  Filter by number.
+  events --msa=<msaNr>[,<msaNr>...] [--ids=<id>[,<id>...]]
+         [--colours=<red|green|blue>[,...]]
+                         Comma-separated values.
+  typed --colour=<red|green|blue> [--count=<n>] [--at=<ATOM>] [--on=<Y-m-d>] [--note=<note>]
+                         Typed values.
+  report [--code=<n>]    Text output, custom exit code.
+  nope                   Fail from a helper.
+  fault                  Throw something undeclared.
+
+Write:
+  save --what=<what>     Write something.
+  rename                 Name the running command without a literal.
+
+Options:
+  --raw                  Print the raw response.
+  --help                 Print this.
+
+Footer prose.
+Demo CLI.
+
+  php demo.php env
+
+Say which host.
+
+Options:
+  --raw                  Print the raw response.
+  --help                 Print this.
+Demo CLI.
+
+  php demo.php contracts [--nr=<nr>]
+
+Filter by number.
+
+Options:
+  --nr=<nr>              Contract number.
+  --raw                  Print the raw response.
+  --help                 Print this.
+Demo CLI.
+
+  php demo.php events --msa=<msaNr>[,<msaNr>...] [--ids=<id>[,<id>...]]
+                      [--colours=<red|green|blue>[,...]]
+
+Comma-separated values.
+
+Options:
+  --msa=<msaNr>[,<msaNr>...]
+                         MSA numbers. At least 1 value. Required.
+  --ids=<id>[,<id>...]   Numeric ids.
+  --colours=<red|green|blue>[,...]
+                         Colours.
+  --raw                  Print the raw response.
+  --help                 Print this.
+Demo CLI.
+
+  php demo.php typed --colour=<red|green|blue> [--count=<n>] [--at=<ATOM>] [--on=<Y-m-d>]
+                     [--note=<note>]
+
+Typed values.
+
+Options:
+  --colour=<red|green|blue>
+                         A colour. Required.
+  --count=<n>            A count. Between 1 and 10. Default: 1.
+  --at=<ATOM>            A moment.
+  --on=<Y-m-d>           A date.
+  --note=<note>          Free text. Default: empty.
+  --raw                  Print the raw response.
+  --help                 Print this.
+Demo CLI.
+
+  php demo.php report [--code=<n>]
+
+Text output, custom exit code.
+
+Options:
+  --code=<n>             Exit with this instead of 0. Default: 0.
+  --raw                  Print the raw response.
+  --help                 Print this.
+Demo CLI.
+
+  php demo.php save --what=<what>
+
+Write something.
+
+Options:
+  --what=<what>          What to save. Required.
+  --raw                  Print the raw response.
+  --confirm              Actually write.
+  --help                 Print this.
+Demo CLI.
+
+  php demo.php rename
+
+Name the running command without a literal.
+
+Options:
+  --raw                  Print the raw response.
+  --confirm              Actually write.
+  --help                 Print this.
+Demo CLI.
+
+  php demo.php nope
+
+Fail from a helper.
+
+Options:
+  --raw                  Print the raw response.
+  --help                 Print this.
+Demo CLI.
+
+  php demo.php fault
+
+Throw something undeclared.
+
+Options:
+  --raw                  Print the raw response.
+  --help                 Print this.

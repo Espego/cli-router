@@ -7,6 +7,7 @@ namespace Espego\CliRouter;
 use BackedEnum;
 use DateTimeImmutable;
 use DateTimeInterface;
+use DateTimeZone;
 use ReflectionEnum;
 use ReflectionMethod;
 use ReflectionNamedType;
@@ -37,7 +38,7 @@ final class Coercer
 
         foreach ($set->globalsFor($command) as $global) {
             $values[$global->phpName] = array_key_exists($global->cliName, $opts)
-                ? $this->value($global, $opts[$global->cliName])
+                ? $this->value($global, $opts[$global->cliName], $set->dateTimeZone)
                 : $global->default;
         }
 
@@ -56,7 +57,7 @@ final class Coercer
      * @param list<string> $args
      * @return list<mixed>
      */
-    public function arguments(CommandInfo $command, array $opts, array $args): array
+    public function arguments(SetInfo $set, CommandInfo $command, array $opts, array $args): array
     {
         $call = [];
         $position = 0;
@@ -68,14 +69,14 @@ final class Coercer
 
                 $this->assertCount($spec, count($rest));
                 foreach ($rest as $raw) {
-                    $call[] = $this->value($spec, $raw);
+                    $call[] = $this->value($spec, $raw, $set->dateTimeZone);
                 }
                 continue;
             }
 
             if ($spec->positional) {
                 if ($position < count($args)) {
-                    $call[] = $this->value($spec, $args[$position++]);
+                    $call[] = $this->value($spec, $args[$position++], $set->dateTimeZone);
                     continue;
                 }
                 if ($spec->isRequired()) {
@@ -86,7 +87,7 @@ final class Coercer
             }
 
             if (array_key_exists($spec->cliName, $opts)) {
-                $call[] = $this->value($spec, $opts[$spec->cliName]);
+                $call[] = $this->value($spec, $opts[$spec->cliName], $set->dateTimeZone);
                 continue;
             }
             if ($spec->isRequired()) {
@@ -171,7 +172,7 @@ final class Coercer
     }
 
     /** @param string|true $raw `true` means the flag was given bare, with no `=value`. */
-    private function value(ValueSpec $spec, string|bool $raw): mixed
+    private function value(ValueSpec $spec, string|bool $raw, ?DateTimeZone $timeZone): mixed
     {
         if ($spec->typeName === 'bool') {
             if ($raw !== true) {
@@ -200,7 +201,7 @@ final class Coercer
                 : "--{$spec->cliName} is required and must have a value");
         }
 
-        return $this->scalar($spec, $value);
+        return $this->scalar($spec, $value, $timeZone);
     }
 
     /** @param class-string<ValueList> $list */
@@ -241,7 +242,7 @@ final class Coercer
         return $part;
     }
 
-    private function scalar(ValueSpec $spec, string $value): mixed
+    private function scalar(ValueSpec $spec, string $value, ?DateTimeZone $timeZone): mixed
     {
         $enum = $spec->enumClass();
         if ($enum !== null) {
@@ -249,7 +250,7 @@ final class Coercer
         }
 
         if ($spec->typeName !== null && ! $spec->isBuiltin && is_a($spec->typeName, DateTimeInterface::class, true)) {
-            return $this->date($spec, $value);
+            return $this->date($spec, $value, $timeZone);
         }
 
         return match ($spec->typeName) {
@@ -339,12 +340,16 @@ final class Coercer
         return $int === false ? null : $enum::tryFrom($int);
     }
 
-    private function date(ValueSpec $spec, string $value): DateTimeImmutable
+    private function date(ValueSpec $spec, string $value, ?DateTimeZone $timeZone): DateTimeImmutable
     {
         $this->assertPattern($spec, $value);
 
+        if ($timeZone === null) {
+            throw new InternalError('DateTimeImmutable coercion has no explicit timezone.');
+        }
+
         try {
-            return new DateTimeImmutable($value);
+            return new DateTimeImmutable($value, $timeZone);
         } catch (Throwable $e) {
             throw new UsageError('cannot parse ' . $this->describe($spec) . ': ' . $e->getMessage());
         }

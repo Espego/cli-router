@@ -8,6 +8,7 @@ use Attribute;
 use BackedEnum;
 use DateTimeImmutable;
 use DateTimeInterface;
+use DateTimeZone;
 use Error;
 use ReflectionAttribute;
 use ReflectionClass;
@@ -35,6 +36,9 @@ final class Introspector
      * @var list<string>
      */
     private const RESERVED = ['help'];
+
+    /** The fixed key under which Commands::helpPages() returns script-level help. */
+    private const OVERVIEW = 'overview';
 
     /**
      * Exceptions the runner handles before #[CatchAs] is consulted, so mapping one is dead code.
@@ -76,7 +80,43 @@ final class Introspector
             $this->assertRunnableEmpty($cli, $commands, $class->getName());
         }
 
-        return new SetInfo($cli, $commands, $globals, $this->catches($class));
+        return new SetInfo(
+            $cli,
+            $commands,
+            $globals,
+            $this->catches($class),
+            $this->dateTimeZone($set, $commands, $globals, $class->getName()),
+        );
+    }
+
+    /**
+     * DateTimeImmutable otherwise reads the process-wide date.timezone, which may not be the
+     * application's timezone yet when coercion runs before middleware.
+     *
+     * @param array<string, CommandInfo> $commands
+     * @param list<ValueSpec> $globals
+     */
+    private function dateTimeZone(object $set, array $commands, array $globals, string $where): ?DateTimeZone
+    {
+        $declaresDate = array_any($globals, static fn (ValueSpec $spec): bool => $spec->typeName === DateTimeImmutable::class);
+        foreach ($commands as $command) {
+            $declaresDate = $declaresDate || array_any(
+                $command->params,
+                static fn (ValueSpec $spec): bool => $spec->typeName === DateTimeImmutable::class,
+            );
+        }
+
+        if (! $declaresDate) {
+            return null;
+        }
+        $timeZone = $set instanceof Commands ? $set->coercionTimeZone() : null;
+        if ($timeZone === null) {
+            throw new DeclarationError(
+                "{$where}: a DateTimeImmutable value needs an explicit timezone. Override dateTimeZone()."
+            );
+        }
+
+        return $timeZone;
     }
 
     /**
@@ -407,6 +447,8 @@ final class Introspector
         $globalNames = array_column($globals, 'cliName');
         $commands = [];
 
+        $this->assertTraitCommandsVisible($class);
+
         // Every method, not only the public ones: a #[Command] the runner could never call has to
         // say so, and silence would read as "my command vanished".
         foreach ($class->getMethods() as $method) {
@@ -414,7 +456,9 @@ final class Introspector
             $meta = $this->attribute($method->getAttributes(Command::class), $where);
 
             if ($meta === null) {
-                if (str_starts_with($method->getName(), 'command')) {
+                if (str_starts_with($method->getName(), 'command')
+                    && $method->getDeclaringClass()->getName() !== Commands::class
+                ) {
                     throw new DeclarationError(sprintf(
                         '%s::%s() is named like a command but carries no #[Command].',
                         $class->getName(),
@@ -442,6 +486,9 @@ final class Introspector
             if (in_array($name, self::RESERVED, true)) {
                 throw new DeclarationError("{$where}: '{$name}' is a reserved command name.");
             }
+            if ($name === self::OVERVIEW) {
+                throw new DeclarationError("{$where}: 'overview' is reserved by helpPages().");
+            }
             if (isset($commands[$name])) {
                 throw new DeclarationError(sprintf(
                     "%s: '%s' is declared twice — %s() and %s() both normalise to it.",
@@ -458,6 +505,80 @@ final class Introspector
         }
 
         return $commands;
+    }
+
+    /**
+     * A class method silently takes precedence over a same-named trait method. Reflection then
+     * exposes only the winner, so the ordinary command scan cannot see a trait's lost #[Command].
+     *
+     * @param ReflectionClass<object> $class
+     */
+    private function assertTraitCommandsVisible(ReflectionClass $class): void
+    {
+        $effective = $class->getMethods();
+
+        foreach ($class->getTraits() as $trait) {
+            $this->assertTraitCommandsVisibleFrom($class, $trait, $effective);
+        }
+    }
+
+    /**
+     * Traits may themselves use traits. A source location survives both imports and `as` aliases,
+     * while getDeclaringClass() reports the using class even for a normally imported method.
+     *
+     * @param ReflectionClass<object> $class
+     * @param ReflectionClass<object> $trait
+     * @param list<ReflectionMethod> $effective
+     */
+    private function assertTraitCommandsVisibleFrom(ReflectionClass $class, ReflectionClass $trait, array $effective): void
+    {
+        foreach ($trait->getTraits() as $nested) {
+            $this->assertTraitCommandsVisibleFrom($class, $nested, $effective);
+        }
+
+        foreach ($trait->getMethods() as $declared) {
+            if ($declared->getAttributes(Command::class) === [] || ! $class->hasMethod($declared->getName())) {
+                continue;
+            }
+
+            foreach ($effective as $method) {
+                if ($method->getFileName() === $declared->getFileName()
+                    && $method->getStartLine() === $declared->getStartLine()
+                ) {
+                    continue 2;
+                }
+            }
+
+            $winner = $class->getMethod($declared->getName());
+            if (! $this->declaredInClass($class, $winner)) {
+                continue;
+            }
+
+            throw new DeclarationError(sprintf(
+                '%s::%s() shadows #[Command] declared in trait %s::%s(); the trait command disappears. '
+                . 'Remove #[Command] from the trait or preserve its method with an as alias.',
+                $class->getName(),
+                $winner->getName(),
+                $trait->getName(),
+                $declared->getName(),
+            ));
+        }
+    }
+
+    /**
+     * A trait import reports this class as its declaring class, but its code sits outside it.
+     *
+     * @param ReflectionClass<object> $class
+     */
+    private function declaredInClass(ReflectionClass $class, ReflectionMethod $method): bool
+    {
+        $file = $class->getFileName();
+        $start = $class->getStartLine();
+        $end = $class->getEndLine();
+        $line = $method->getStartLine();
+
+        return $file !== false && $start !== false && $end !== false && $line !== false
+            && $method->getFileName() === $file && $line >= $start && $line <= $end;
     }
 
     /**
@@ -769,6 +890,12 @@ final class Introspector
     {
         $counted = $spec->isList() || $spec->variadic;
 
+        if ($spec->isList() && $spec->isRequired() && $spec->meta->minCount === null) {
+            throw new DeclarationError(
+                "{$where}: a required ValueList needs minCount: 0 to allow an empty list, or minCount: 1 or more to refuse one."
+            );
+        }
+
         foreach ([
             'minCount' => $spec->meta->minCount,
             'maxCount' => $spec->meta->maxCount,
@@ -779,7 +906,9 @@ final class Introspector
             if (! $counted) {
                 throw new DeclarationError("{$where}: {$label} applies to a list or a variadic, which this is not.");
             }
-            if ($count < 1) {
+            if ($count < 1
+                && ! ($label === 'minCount' && $count === 0 && $spec->isList() && $spec->isRequired())
+            ) {
                 throw new DeclarationError("{$where}: {$label} is {$count}; it must be at least 1.");
             }
         }

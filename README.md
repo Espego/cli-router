@@ -60,10 +60,11 @@ There is no name override, deliberately — one override is all it takes for the
 describing a flag that does not exist.
 
 Types come from the signature: `string` is required unless it has a default, `bool` is a flag that
-refuses a value, `?DateTimeImmutable` parses, a backed enum validates itself and prints its own
-`Allowed:` list, and a `ValueList` subtype is a multi-value option. The attribute carries only what
-a type genuinely cannot say — a description, a `pattern`, a `min`/`max`, a `minCount`/`maxCount`, a
-`separator`. Every parameter is documented in the constructor docblock of `src/Param.php`.
+refuses a value, `?DateTimeImmutable` parses in the set's explicit `dateTimeZone()`, a backed enum
+validates itself and prints its own `Allowed:` list, and a `ValueList` subtype is a multi-value
+option. The attribute carries only what a type genuinely cannot say — a description, a `pattern`,
+a `min`/`max`, a `minCount`/`maxCount`, a `separator`. Every parameter is documented in the
+constructor docblock of `src/Param.php`.
 
 ## What the parser does with argv
 
@@ -71,6 +72,18 @@ a type genuinely cannot say — a description, a `pattern`, a `min`/`max`, a `mi
 - A repeated option is an error, never resolved to the last occurrence.
 - `--` ends option parsing; everything after it is positional whatever it looks like.
 - An argument that is not valid UTF-8 is refused by position. argv is text or it is nothing.
+
+## Introspection and tests
+
+`commandNames()` returns every command, including hidden ones. `helpPages('script.php')` returns a
+flat `['overview' => string, commandName => string, ...]` map rendered in one pass, so it can be
+snapshotted or joined directly. `helpData()` returns the same declaration as a JSON-safe array with
+types, defaults, constraints and enum values. A multi-command CLI exposes that model directly
+through `help --json`, or one command through `help <command> --json`.
+
+Tests can call `handleBuffered(['script.php', ...])` for `[exitCode, stdout, stderr]` without
+repeating `BufferedOutput` setup. Use `Diagnostic::line()` before inserting untrusted text into a
+diagnostic line written by application code.
 
 ## Things it deliberately does not do
 
